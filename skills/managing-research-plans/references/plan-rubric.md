@@ -8,7 +8,7 @@
 - **Evidence is required for every score.** Each item declares its evidence type:
   - *plan text* — quote the relevant passage from the plan (or state that none exists).
   - *git/artifact* — commit dates, version files (`v1.md`, `v2.md`, ...), decision-log entries. These items cannot be scored from plan text alone. If the evidence is unavailable (no git history, plan not yet committed), score the item `unknown` and say so.
-- **N/A** is allowed where a dimension does not apply (noted per item). Rescale: applicable max = 28 minus 2 per N/A item; report **raw score / applicable max** and the percentage.
+- **N/A** is allowed where a dimension does not apply (noted per item). Both `N/A` and `unknown` items are excluded from the applicable max: applicable max = 28 minus 2 per excluded item; report **raw score / applicable max** and the percentage, and list which items were excluded and why.
 - Bands (on the percentage): **below 50%** — revise before executing; **50–75%** — fine to execute, address the flagged items; **above 75%** — strong plan.
 - The gradient matters more than the number. A plan can pass every completeness check and still read as the agent's work with a name on top. Items 8–11 are where that shows.
 

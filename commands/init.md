@@ -21,11 +21,11 @@ Follow these steps in order:
 5. **Create the artifacts** from the templates in `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/templates/`:
    - `plans/master-plan.md` from `master-plan.md` — keep the `<!-- research-plans:master-plan -->` marker on line 1, fill in project context (2–3 paragraphs from the interview), the confirmed components table, and today's date (`date +%Y-%m-%d`). Delete the Sequencing notes section unless dependencies are non-linear.
    - `plans/decision-log.md` from `decision-log.md` — header and rules only. **Never fabricate entries for work that predates initialization.** The log starts now.
-   - `plans/execution/.gitkeep` (empty file; execution plans are created later by `/research-plans:plan`).
+   - `plans/execution/.gitkeep` — write it as an empty file with the Write tool (not `touch`), so the directory survives a git commit. Execution plans are created later by `/research-plans:plan`.
 
 6. **Bind the conventions in CLAUDE.md.** Read `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/templates/claude-md-section.md`.
    - If the project has no `CLAUDE.md`, create one containing that block.
    - If `CLAUDE.md` exists without the `<!-- research-plans:start -->` marker, append the block to the end. Touch nothing else in the file.
    - If the marker already exists, replace everything between `<!-- research-plans:start -->` and `<!-- research-plans:end -->` (inclusive) with the current block. Never duplicate the section; never modify content outside the markers.
 
-7. **Wrap up.** Show the researcher what was created, then suggest (do not run without approval) a commit such as `plans: initialize research-plans workflow`. Point them at `/research-plans:plan` to scope the first component.
+7. **Wrap up.** Verify on disk that every artifact from steps 5–6 actually exists, and report only what exists — if a write was denied or skipped, say so plainly. Then suggest (do not run without approval) a commit such as `plans: initialize research-plans workflow`, and point the researcher at `/research-plans:plan` to scope the first component.
