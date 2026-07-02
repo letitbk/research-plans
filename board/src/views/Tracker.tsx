@@ -1,7 +1,7 @@
 import Markdown from "../components/Markdown";
 import { GeneralCommentBox } from "../components/AnnotationLayer";
 import type { BoardData, TrackerStatus } from "../lib/types";
-import { parseMasterPlan } from "../lib/parse";
+import { parseExecutionPlan, parseMasterPlan, parseServes } from "../lib/parse";
 
 const CHIP: Record<TrackerStatus, string> = {
   "not started": "bg-stone-100 text-stone-600 border-stone-200",
@@ -54,6 +54,30 @@ export default function Tracker({
     return acc;
   }, {});
 
+  const hasRQs = mp.researchQuestions.length > 0;
+  // Serves mismatch: the latest execution-plan version declares different RQs
+  // than the master row (client has both files; cheap check).
+  const planServesBySlug = new Map<string, string[]>();
+  for (const g of data.files.executionPlans) {
+    const latest = g.versions[g.versions.length - 1];
+    if (!latest) continue;
+    const parsed = parseExecutionPlan(latest.content);
+    if (parsed.serves) {
+      planServesBySlug.set(g.component, parseServes(parsed.serves).tokens);
+    }
+  }
+  const servesMismatch = (row: (typeof mp.components)[number]): boolean => {
+    const slug = slugFromLink(row.planLink);
+    if (!slug || !planServesBySlug.has(slug)) return false;
+    const rowTokens = parseServes(row.serves).tokens;
+    const planTokens = planServesBySlug.get(slug)!;
+    if (rowTokens.length === 0 && planTokens.length === 0) return false;
+    return (
+      rowTokens.length !== planTokens.length ||
+      rowTokens.some((t) => !planTokens.includes(t))
+    );
+  };
+
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between">
@@ -76,12 +100,30 @@ export default function Tracker({
         ))}
       </div>
 
-      <section className="mb-6 rounded-lg border border-stone-200 bg-white p-4">
+      <section className="mb-4 rounded-lg border border-stone-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
           Project context
         </h2>
         <Markdown source={mp.contextMd} className="text-sm" />
       </section>
+
+      {hasRQs && (
+        <section className="mb-6 rounded-lg border border-stone-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+            Research questions
+          </h2>
+          <ol className="space-y-1 text-sm text-stone-800">
+            {mp.researchQuestions.map((q) => (
+              <li key={q.num} className="flex gap-2">
+                <span className="shrink-0 rounded bg-stone-900 px-1.5 py-0.5 text-xs font-bold text-white">
+                  RQ{q.num}
+                </span>
+                <span>{q.text}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="rounded-lg border border-stone-200 bg-white">
         <table className="w-full text-sm">
@@ -89,6 +131,7 @@ export default function Tracker({
             <tr className="border-b border-stone-200 text-left text-xs uppercase tracking-wide text-stone-500">
               <th className="px-4 py-2">#</th>
               <th className="px-4 py-2">Component</th>
+              {hasRQs && <th className="px-4 py-2">Serves</th>}
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2">Plan</th>
               <th className="px-4 py-2">Outcome / notes</th>
@@ -99,12 +142,44 @@ export default function Tracker({
               const slug = slugFromLink(r.planLink);
               const missingFile =
                 slug !== null && !knownSlugs.has(slug);
+              const serves = parseServes(r.serves);
+              const mismatch = servesMismatch(r);
               return (
                 <tr key={i} className="border-b border-stone-100 last:border-0">
                   <td className="px-4 py-2.5 text-stone-400">{r.num}</td>
                   <td className="px-4 py-2.5 font-medium text-stone-800">
                     {r.component}
                   </td>
+                  {hasRQs && (
+                    <td className="px-4 py-2.5">
+                      {serves.isInfra ? (
+                        <span className="text-xs text-stone-400">infra</span>
+                      ) : serves.tokens.length > 0 ? (
+                        <span className="flex flex-wrap gap-1">
+                          {serves.tokens.map((t) => (
+                            <span
+                              key={t}
+                              className="rounded bg-stone-100 px-1.5 py-0.5 text-xs font-semibold text-stone-700"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                          {mismatch && (
+                            <span
+                              className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800"
+                              title="The execution plan's Serves line disagrees with this row"
+                            >
+                              mismatch
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                          unlinked
+                        </span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-2.5">
                     <span
                       className={`rounded-full border px-2 py-0.5 text-xs font-medium ${CHIP[r.status]}`}

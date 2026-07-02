@@ -21,7 +21,7 @@ Open Claude Code in your project folder and run:
 /research-plans:init
 ```
 
-Claude will ask a few questions (research question, data, who is involved, constraints), look at what already exists in the folder, and propose a components list. Adopting mid-project is fine: work you have already done gets marked `done` or `in progress`, and nothing is invented about the past. Then it creates `plans/master-plan.md`, `plans/decision-log.md`, and a marked section in your `CLAUDE.md`. Commit when it looks right.
+Claude will ask a few questions, starting with your research questions (they become a numbered list in the master plan), then data, people, and constraints. It derives the components from your research design, with each one naming the questions it serves, and looks at what already exists in the folder only to set honest statuses. Adopting mid-project is fine: work you have already done gets marked `done` or `in progress`, and nothing is invented about the past. You can also run init mid-session, after an hour of exploring with Claude: what the session established goes into the plan's context and reasons, and the decision log starts at init, never backfilled. Then it creates `plans/master-plan.md`, `plans/decision-log.md`, and a marked section in your `CLAUDE.md`. Commit when it looks right.
 
 ## 3. Plan your first component
 
@@ -49,7 +49,7 @@ This updates the tracker, asks you about any decisions that went unlogged (they 
 /research-plans:review
 ```
 
-Scores the plan against a 14-item rubric (properties, completeness, engagement quality, scope) and tells you whether the component should be split. Scores come with quoted evidence and the three revisions that would help most. The bands: below 50 percent, revise before executing; 50 to 75 percent, fine to execute but address the flags; above 75 percent, strong. The rubric is a draft; disagreements with it are useful feedback.
+The review runs in two stages. First a threshold: is this a plan at all? Nine pass or fail checks (a goal with success criteria, reasoned scope decisions, executable steps, a named verification plan, readability, prospectivity, recorded revisions). A document that fails gets told exactly why, in plain terms ("no success criteria: a task list, not a plan yet"), with the fixes. Only a plan that passes gets the second stage: a quality grade on eight items with quoted evidence and the three revisions that would help most. The bands: below 50 percent, revise before executing; 50 to 75 percent, fine to execute but address the flags; above 75 percent, strong. The rubric is a draft; disagreements with it are useful feedback.
 
 And `/research-plans:status` at any time shows the tracker and flags drift.
 
@@ -72,6 +72,8 @@ This writes `plans/board.html`, one self-contained file that opens in any browse
 ## FAQ
 
 **My project is not a git repository.** Everything works, but the plugin loses git-based evidence (commit timing, staleness checks) and will say so. A git repository is strongly recommended since the version history is part of the point.
+
+**I already did half the work before adopting this.** Mid-session and mid-project adoption is supported: prior work informs the plan (context, research questions, statuses, scope reasons), never the decision log. The log starts at initialization and is never backfilled.
 
 **I use Claude Code's plan mode.** Fine. If a plan gets approved through plan mode, Claude copies it into the component's next version slot so the repository record stays complete.
 

@@ -45,7 +45,11 @@ export default function Scorecard({
           {reviews.map((r, i) => {
             const s = parseScorecard(r.content);
             const label = s
-              ? `${s.component} v${s.planVersion} — ${s.percent}%`
+              ? s.threshold?.verdict === "fail"
+                ? `${s.component} v${s.planVersion} — threshold failed`
+                : s.threshold?.verdict === "undetermined"
+                  ? `${s.component} v${s.planVersion} — undetermined`
+                  : `${s.component} v${s.planVersion} — ${s.percent}%`
               : r.path.split("/").pop();
             return (
               <li key={r.path}>
@@ -75,6 +79,56 @@ export default function Scorecard({
           </div>
         ) : (
           <div className="space-y-4">
+            {sc.threshold && (
+              <div
+                className={`rounded-lg border p-4 ${
+                  sc.threshold.verdict === "pass"
+                    ? "border-green-200 bg-green-50"
+                    : sc.threshold.verdict === "undetermined"
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-red-200 bg-red-50"
+                }`}
+              >
+                <h2 className="text-sm font-bold uppercase tracking-wide text-stone-800">
+                  {sc.threshold.verdict === "pass"
+                    ? "Threshold: PASS — meets the definition of a plan; quality is the grade below"
+                    : sc.threshold.verdict === "undetermined"
+                      ? "Threshold: UNDETERMINED — missing evidence; grade withheld"
+                      : "Threshold: FAILED — not a plan yet"}
+                </h2>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {sc.threshold.checks.map((c) => (
+                    <span
+                      key={c.id}
+                      title={c.note ?? c.name ?? c.id}
+                      className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+                        c.result === "pass"
+                          ? "bg-green-100 text-green-800"
+                          : c.result === "fail"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-stone-100 text-stone-500"
+                      }`}
+                    >
+                      {c.id} {c.result === "na" ? "N/A" : c.result}
+                    </span>
+                  ))}
+                </div>
+                {sc.threshold.verdict !== "pass" &&
+                  (sc.threshold.failures?.length ?? 0) > 0 && (
+                    <ul className="mt-3 space-y-2 text-sm text-stone-800">
+                      {sc.threshold.failures!.map((f) => (
+                        <li key={f.id}>
+                          <span className="font-bold">{f.id}:</span> {f.verdict}
+                          {f.fix && (
+                            <span className="text-stone-600"> Fix: {f.fix}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            )}
+
             <div className="rounded-lg border border-stone-200 bg-white p-5">
               <div className="flex items-baseline justify-between">
                 <h1 className="text-lg font-bold text-stone-900">
@@ -84,32 +138,47 @@ export default function Scorecard({
                   {sc.date} · rubric v{sc.rubricVersion}
                 </span>
               </div>
-              <div className="mt-3 flex items-center gap-4">
-                <div className="text-3xl font-bold text-stone-900">
-                  {sc.percent}%
-                </div>
-                <div className="flex-1">
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
-                    <div
-                      className={`h-full ${bandColor(sc.percent)}`}
-                      style={{ width: `${Math.min(100, sc.percent)}%` }}
-                    />
+              {(!sc.threshold || sc.threshold.verdict === "pass") &&
+              sc.percent !== null ? (
+                <div className="mt-3 flex items-center gap-4">
+                  <div className="text-3xl font-bold text-stone-900">
+                    {sc.percent}%
                   </div>
-                  <div className="mt-1 text-xs text-stone-500">
-                    {sc.raw} / {sc.applicableMax} applicable · band:{" "}
-                    <span className="font-medium text-stone-700">{sc.band}</span>
-                    {sc.excluded && sc.excluded.length > 0 && (
-                      <>
-                        {" "}
-                        · excluded:{" "}
-                        {sc.excluded.map((e) => `#${e.id} (${e.why})`).join("; ")}
-                      </>
-                    )}
+                  <div className="flex-1">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
+                      <div
+                        className={`h-full ${bandColor(sc.percent)}`}
+                        style={{ width: `${Math.min(100, sc.percent)}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 text-xs text-stone-500">
+                      {sc.raw} / {sc.applicableMax} applicable · band:{" "}
+                      <span className="font-medium text-stone-700">
+                        {sc.band}
+                      </span>
+                      {sc.excluded && sc.excluded.length > 0 && (
+                        <>
+                          {" "}
+                          · excluded:{" "}
+                          {sc.excluded
+                            .map((e) => `${e.id} (${e.why})`)
+                            .join("; ")}
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-2 text-sm text-stone-500">
+                  No grade —{" "}
+                  {sc.threshold?.verdict === "fail"
+                    ? "the document must pass the threshold before quality is graded."
+                    : "grade withheld until the missing evidence is supplied."}
+                </div>
+              )}
             </div>
 
+            {sc.items.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
               <table className="w-full text-sm">
                 <thead>
@@ -145,6 +214,7 @@ export default function Scorecard({
                 </tbody>
               </table>
             </div>
+            )}
 
             {sc.topRevisions && sc.topRevisions.length > 0 && (
               <div className="rounded-lg border border-stone-200 bg-white p-4">

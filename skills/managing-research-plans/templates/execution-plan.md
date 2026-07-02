@@ -4,6 +4,13 @@ Component: `<NN-slug>` · Master plan: [master-plan.md](../../master-plan.md) ·
 Supersedes: v<N-1> — <one line: what changed and why>
 <!-- Omit the Supersedes line for v1. Never edit an earlier version; a revision is a new file. -->
 
+## Goal and success criteria
+
+Serves: <RQ numbers from the master plan, e.g. `RQ1` or `RQ1, RQ2`; `—` for infrastructure>
+
+<What this component will produce or establish, and the concrete criteria by which the
+researcher will judge that it succeeded. Every build step below must trace back to this.>
+
 ## Context
 
 <Why this work, what it builds on, and what question it answers. A paragraph or two, readable by a coauthor with no chat context.>

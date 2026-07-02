@@ -13,6 +13,11 @@ Render the current state of the project and reconcile the master plan against re
    - components `in progress` with no git activity for 14+ days (`git log --since`); **no-git fallback:** if not a git repository, use file modification times and note the weaker evidence;
    - a decision log that has stayed empty while execution plans exist (possible logging gap);
    - unsigned plan versions (no sign-off line);
-   - `plans/board.html` older than the newest file under `plans/` (stale snapshot — suggest `/research-plans:board --export` to regenerate).
+   - `plans/board.html` older than the newest file under `plans/` (stale snapshot — suggest `/research-plans:board --export` to regenerate);
+   - master plan missing a `### Research questions` subsection (pre-v0.3 artifact — suggest `/research-plans:init` update mode);
+   - component rows with an EMPTY Serves cell while research questions exist (`—` is the deliberate infrastructure marker and is never flagged);
+   - Serves values naming RQ numbers that do not exist in the list;
+   - an execution plan whose `Serves:` line disagrees with its master-plan row;
+   - `—` overuse: a soft warning when more than half the components are `—` while research questions exist — infrastructure should be the exception, not the norm.
 
 3. **One suggested next action.** End with a single concrete suggestion — the next `not started` component to plan, a stale component to sync, or a flagged drift to resolve — and which command does it. Mention `/research-plans:board` for the visual version of this report.

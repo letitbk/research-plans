@@ -45,10 +45,16 @@ export interface ParsedMasterPlan {
   ok: boolean;
   title: string;
   lastUpdated: string | null;
-  contextMd: string;
+  contextMd: string; // Research questions subsection stripped out
+  researchQuestions: ResearchQuestion[];
   components: TrackerRow[];
   sequencingMd: string | null;
   raw: string;
+}
+
+export interface ResearchQuestion {
+  num: number;
+  text: string;
 }
 
 export type TrackerStatus =
@@ -65,6 +71,7 @@ export interface TrackerRow {
   status: TrackerStatus;
   planLink: string;
   notes: string;
+  serves: string; // raw Serves cell; "" for old 5-column tables
 }
 
 export interface ParsedLogEntry {
@@ -81,6 +88,8 @@ export interface ParsedExecutionPlan {
   componentSlug: string | null;
   date: string | null;
   supersedes: string | null;
+  goal: string | null; // "Goal and success criteria" body; null in pre-v0.3 plans
+  serves: string | null; // "Serves:" line inside the goal section
   sections: { heading: string; content: string }[];
   signedOff: string | null;
   raw: string;
@@ -93,18 +102,33 @@ export interface Scorecard {
   planPath: string;
   rubricVersion: string;
   date: string;
+  threshold?: ScorecardThreshold; // schemaVersion 2+
   items: ScorecardItem[];
-  raw: number;
-  applicableMax: number;
-  percent: number;
-  band: string;
-  excluded?: { id: number; why: string }[];
+  raw: number | null; // null on threshold fail/undetermined
+  applicableMax: number | null;
+  percent: number | null;
+  band: string; // "not a plan" (fail) | "undetermined" | grade bands
+  excluded?: { id: number | string; why: string }[];
   topRevisions?: string[];
   split?: { verdict: string; detail: string };
 }
 
+export interface ScorecardThreshold {
+  verdict: "pass" | "undetermined" | "fail";
+  checks: ThresholdCheck[];
+  failures?: { id: string; verdict: string; fix?: string }[];
+}
+
+export interface ThresholdCheck {
+  id: string;
+  name?: string;
+  result: "pass" | "fail" | "na" | "unknown";
+  evidence?: string;
+  note?: string;
+}
+
 export interface ScorecardItem {
-  id: number;
+  id: number | string; // 1..14 in v1, "G1".."G8" in v2
   name?: string;
   score: number | null;
   status?: string; // "N/A" | "unknown" when score is null

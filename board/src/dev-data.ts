@@ -9,21 +9,27 @@ const masterPlan = `<!-- research-plans:master-plan -->
 # Immigration Attitudes (ISSP) — Master Plan
 
 Last updated: 2026-07-02
+Initialized: 2026-06-28 09:15
 
 ## Project context
 
-This project is a cross-national analysis of immigration attitudes using ISSP data (${MARKER}). The core question is how support for immigration varies across countries and what individual- and country-level factors are associated with that variation.
+This project is a cross-national analysis of immigration attitudes using ISSP data (${MARKER}). It asks how support for immigration varies across countries and what individual- and country-level factors account for that variation.
 
 The hard constraint is the deadline: end of July 2026.
 
+### Research questions
+
+1. RQ1: How does public support for immigration vary across countries and over time?
+2. RQ2: Which individual- and country-level factors are associated with that variation?
+
 ## Components
 
-| # | Component | Status | Execution plan | Outcome / notes |
-|---|-----------|--------|----------------|-----------------|
-| 1 | Data acquisition | done | — | ISSP sample in repo |
-| 2 | Data cleaning | done | [v2](execution/02-data-cleaning/v2.md) | 66,864 rows after exclusions |
-| 3 | Descriptive analysis | in progress | [v1](execution/03-descriptives/v1.md) | — |
-| 4 | Regression modeling | not started | — | — |
+| # | Component | Status | Execution plan | Outcome / notes | Serves |
+|---|-----------|--------|----------------|-----------------|--------|
+| 1 | Data acquisition | done | — | ISSP sample in repo | — |
+| 2 | Data cleaning | done | [v2](execution/02-data-cleaning/v2.md) | 66,864 rows after exclusions | RQ1, RQ2 |
+| 3 | Descriptive analysis | in progress | [v1](execution/03-descriptives/v1.md) | — | RQ1 |
+| 4 | Regression modeling | not started | — | — | RQ2 |
 
 Statuses: \`not started\` / \`planned\` / \`in progress\` / \`done\` / \`dropped\`.
 `;
@@ -95,6 +101,12 @@ const cleaningV2 = `# Data Cleaning — Execution Plan v2
 
 Component: \`02-data-cleaning\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-07-01
 Supersedes: v1 — duplicated household IDs discovered in two countries; added an explicit exclusion rule.
+
+## Goal and success criteria
+
+Serves: RQ1, RQ2
+
+Produce a documented analysis sample from the raw ISSP extract. Success: every recode and exclusion is logged with row counts; the cleaned file reproduces exactly from the committed script; the duplicate report is reviewed and signed off by the researcher.
 
 ## Context
 
@@ -170,6 +182,12 @@ const descriptivesDraft = `# Descriptive Analysis — Execution Plan v2
 
 Component: \`03-descriptives\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-07-02
 Supersedes: v1 — reviewer asked for item-level missingness table before means.
+
+## Goal and success criteria
+
+Serves: RQ1
+
+Describe cross-country variation in immigration support with honest missingness reporting. Success: a per-country table (weighted and unweighted) plus a missingness table, each cross-checked against the cleaning log row counts.
 
 ## Context
 
@@ -247,6 +265,116 @@ Right-sized: one coherent cleaning component with a single verification routine.
 \`\`\`
 `;
 
+const reviewV2Pass = `# Review — Descriptive Analysis v1
+
+Plan: [v1.md](../execution/03-descriptives/v1.md) · Rubric: plan-rubric.md (v0.2) · Date: 2026-07-02
+Threshold: **PASS (9/9; T8 N/A, T9 N/A — unexecuted)**
+Score: **11 / 14 (79%)** — strong
+
+## Threshold
+
+| ID | Check | Result | Note |
+|----|-------|--------|------|
+| T1 | Goal + success criteria | pass | goal + cross-check criteria stated |
+| T8 | Prospective | na | unexecuted — commit before executing |
+
+## Grading items
+
+| # | Item | Score | Evidence | Justification |
+|---|------|-------|----------|---------------|
+| G1 | Decisions specific, reasoned, grounded | 2 | "Comparability with published CRI descriptives" | Project-specific reason |
+
+## Top revisions
+
+1. Name the exact weight variable from the codebook.
+
+## Split assessment
+
+Right-sized: one descriptive component with a single verification routine.
+
+## Data
+
+\`\`\`json board-scorecard
+{"schemaVersion":2,"component":"03-descriptives","planVersion":1,
+ "planPath":"plans/execution/03-descriptives/v1.md","rubricVersion":"0.2","date":"2026-07-02",
+ "threshold":{"verdict":"pass","checks":[
+  {"id":"T1","name":"Goal + success criteria","result":"pass","evidence":"Success: a per-country table...","note":"explicit criteria"},
+  {"id":"T2","name":"Scope decisions with reasons","result":"pass","note":"weights row reasoned"},
+  {"id":"T3","name":"Approach / build steps","result":"pass"},
+  {"id":"T4","name":"Verification plan","result":"pass","note":"cross-check vs cleaning log"},
+  {"id":"T5","name":"Readable cold","result":"pass"},
+  {"id":"T6","name":"Goal-driven","result":"pass"},
+  {"id":"T7","name":"Executable + fidelity-checkable","result":"pass"},
+  {"id":"T8","name":"Prospective","result":"na","note":"unexecuted"},
+  {"id":"T9","name":"Revisable","result":"na","note":"no deviation yet"}],
+  "failures":[]},
+ "items":[
+  {"id":"G1","name":"Decisions specific, reasoned, grounded","score":2,"evidence":"Comparability with published CRI descriptives","justification":"Project-specific"},
+  {"id":"G2","name":"Domain knowledge non-generic","score":1,"evidence":"ISSP design weights","justification":"Some grounding"},
+  {"id":"G3","name":"Choices consequential","score":2,"evidence":"weighted and unweighted side by side","justification":"Shapes evidence"},
+  {"id":"G4","name":"Revisions substantive","score":null,"status":"N/A","justification":"unexecuted v1"},
+  {"id":"G5","name":"Readability quality","score":2,"evidence":"whole plan","justification":"Reads cold"},
+  {"id":"G6","name":"Verification checkability","score":2,"evidence":"cross-checked against cleaning log","justification":"Concrete"},
+  {"id":"G7","name":"Out of scope constrains","score":1,"evidence":"No models","justification":"Somewhat generic"},
+  {"id":"G8","name":"Right-sized","score":1,"evidence":"one component","justification":"Missingness add-on borderline"}],
+ "raw":11,"applicableMax":14,"percent":79,"band":"strong",
+ "excluded":[{"id":"G4","why":"N/A — unexecuted v1"}],
+ "topRevisions":["Name the exact weight variable from the codebook."],
+ "split":{"verdict":"right-sized","detail":"One descriptive component with a single verification routine."}}
+\`\`\`
+`;
+
+const reviewV2Fail = `# Review — Regression Modeling v1
+
+Plan: [v1.md](../execution/04-regression/v1.md) · Rubric: plan-rubric.md (v0.2) · Date: 2026-07-02
+Threshold: **FAIL — T1, T4**
+
+## Threshold
+
+| ID | Check | Result | Note |
+|----|-------|--------|------|
+| T1 | Goal + success criteria | fail | steps only; no success criteria anywhere |
+| T4 | Verification plan | fail | "check the results" names no check |
+
+Nearest archetype: a to-do list — no reasons and no success criteria.
+
+## Top revisions
+
+1. State the goal and the criteria for judging success.
+2. Name at least one verification check and where it applies.
+3. Give each modeling choice a reason.
+
+## Split assessment
+
+Split not assessable until it is a plan; on its face it also mixes main models and robustness.
+
+## Data
+
+\`\`\`json board-scorecard
+{"schemaVersion":2,"component":"04-regression","planVersion":1,
+ "planPath":"plans/execution/04-regression/v1.md","rubricVersion":"0.2","date":"2026-07-02",
+ "threshold":{"verdict":"fail","checks":[
+  {"id":"T1","name":"Goal + success criteria","result":"fail"},
+  {"id":"T2","name":"Scope decisions with reasons","result":"fail"},
+  {"id":"T3","name":"Approach / build steps","result":"pass"},
+  {"id":"T4","name":"Verification plan","result":"fail"},
+  {"id":"T5","name":"Readable cold","result":"pass"},
+  {"id":"T6","name":"Goal-driven","result":"unknown"},
+  {"id":"T7","name":"Executable + fidelity-checkable","result":"pass"},
+  {"id":"T8","name":"Prospective","result":"na"},
+  {"id":"T9","name":"Revisable","result":"na"}],
+  "failures":[
+   {"id":"T1","verdict":"No extractable goal or success criteria — a task list, not a plan yet.","fix":"State the goal and the criteria for judging success."},
+   {"id":"T2","verdict":"Choices without reasons — what makes a to-do list not a plan.","fix":"Give each modeling choice a reason."},
+   {"id":"T4","verdict":"Verification is owed but never named.","fix":"Name at least one check and where it applies."}]},
+ "items":[],
+ "raw":null,"applicableMax":null,"percent":null,"band":"not a plan",
+ "excluded":[],
+ "topRevisions":["State the goal and the criteria for judging success.","Name at least one verification check and where it applies.","Give each modeling choice a reason."],
+ "split":{"verdict":"split required","detail":"Mixes main models and robustness; split once it clears the threshold."}}
+\`\`\`
+`;
+
 export const devData: BoardData = {
   schemaVersion: 1,
   generatedAt: "2026-07-02T12:00:00-04:00",
@@ -293,6 +421,8 @@ export const devData: BoardData = {
     ],
     reviews: [
       { path: "plans/reviews/02-data-cleaning-v2.md", content: review },
+      { path: "plans/reviews/03-descriptives-v1.md", content: reviewV2Pass },
+      { path: "plans/reviews/04-regression-v1.md", content: reviewV2Fail },
     ],
   },
 };

@@ -141,11 +141,22 @@ function buildEvents(data: BoardData): TimelineEvent[] {
   for (const r of data.files.reviews) {
     const sc = parseScorecard(r.content);
     if (sc) {
+      const failedIds =
+        sc.threshold?.checks
+          .filter((c) => c.result === "fail")
+          .map((c) => c.id)
+          .join(", ") ?? "";
+      const body =
+        sc.threshold?.verdict === "fail"
+          ? `**Threshold failed — not a plan yet** (${failedIds}).`
+          : sc.threshold?.verdict === "undetermined"
+            ? `**Threshold undetermined** — missing evidence; grade withheld.`
+            : `Scored **${sc.raw}/${sc.applicableMax} (${sc.percent}%)** — ${sc.band}.`;
       events.push({
         kind: "review",
         sortKey: `${sc.date} 00:00`,
         title: `${sc.component} v${sc.planVersion}`,
-        body: `Scored **${sc.raw}/${sc.applicableMax} (${sc.percent}%)** — ${sc.band}.`,
+        body,
         searchText: `review ${sc.component} ${sc.band}`,
       });
     } else {

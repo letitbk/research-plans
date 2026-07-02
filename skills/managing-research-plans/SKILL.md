@@ -1,6 +1,6 @@
 ---
 name: managing-research-plans
-description: Use when working in a research repository initialized for the research-plans workflow (plans/master-plan.md exists AND the repo's CLAUDE.md contains the research-plans marker) — when a session starts there, when executing analysis or data work, when a decision point arises with the researcher, when work deviates from an execution plan, or when the researcher mentions the master plan, an execution plan, or the decision log. Not for software project planning, and not for repositories without both markers.
+description: Use when working in a research repository initialized for the research-plans workflow (plans/master-plan.md exists AND the repo's CLAUDE.md contains the research-plans marker) — when a session starts there, when the researcher asks to adopt the workflow mid-session after exploratory work has begun, when executing analysis or data work, when a decision point arises with the researcher, when work deviates from an execution plan, or when the researcher mentions the master plan, an execution plan, or the decision log. Not for software project planning, and not for repositories without both markers.
 ---
 
 # Managing Research Plans
@@ -8,6 +8,8 @@ description: Use when working in a research repository initialized for the resea
 ## Overview
 
 Dual-tracking: **the researcher plans and decides; you carry the bookkeeping.** The project keeps a lightweight master plan (a roadmap with a components tracker), one versioned execution plan per component, and an append-only decision log. Your job is to keep those three artifacts truthful without the researcher having to think about them.
+
+Artifacts are organized around **the research project and its questions**: the master plan carries numbered research questions (RQ1, RQ2, …) and every component serves one or more of them (the Serves column; `—` for genuine infrastructure). Components are research activities, never a history of repository actions — what exists in the repo informs status, never structure.
 
 ## When NOT to use (hard gate)
 
@@ -21,6 +23,8 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 ## Core pattern
 
 **Session start.** Read `plans/master-plan.md`, then the latest version of the execution plan for whichever component the work touches (`plans/execution/<NN-slug>/`, highest `vN.md`).
+
+**Mid-session adoption.** The workflow can be adopted mid-session, after exploratory work has begun (`/research-plans:init` works either way). What the session already established feeds the plan — context, research questions, goals, scope reasons — never the log. The log starts at the master plan's `Initialized:` timestamp; nothing before it is loggable or counts as a deviation.
 
 **During work.**
 - Surface interpretive choices (variable selection, case exclusions, coding rules, model specification) to the researcher *before* acting. Do not decide research questions, analytical choices, or interpretation on the researcher's behalf.
@@ -37,7 +41,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 - **Versions are immutable.** `v1.md, v2.md, ...` are never overwritten or edited. Before writing any version, compute the next unused number and refuse to write over an existing file. Deviations are recorded, never hidden — especially the improvised ones.
 - **The log is append-only and real-time.** Never backfill at the end of a session. Late captures happen only via `/research-plans:sync` and carry the `(late-captured at sync)` label.
 - **The master plan stays light.** One line of outcome per component; detail lives in execution plans and the log. Do not let sync bloat it.
-- **The plan is not a preregistration.** It is designed to be revised openly; revision is the process working, not a failure.
+- **The plan is not a preregistration — it is a contract with a built-in amendment process.** A recorded revision is an amendment: legitimate, expected. A silent deviation is a breach. Preregistration freezes the contract; this workflow keeps it amendable and treats only undisclosed change as deviation.
 - **Researcher signs.** Every execution plan version ends with a sign-off line. Jointly produced, but committed by the researcher.
 - **Native plan mode.** If the researcher uses Claude Code's plan mode anyway, copy the approved plan into the component's next version slot so the repo record stays complete.
 - **Commits.** After plan versions, log milestones, or tracker changes, suggest a short commit (e.g., `plan: 02-analysis v2 — switched to multilevel after ICC check`). Do not commit without the researcher's go-ahead.
@@ -58,7 +62,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | `/research-plans:init` | Opt a project in (creates the artifacts) |
 | `/research-plans:plan` | Scope next component, author its execution plan |
 | `/research-plans:sync` | Post-execution checkpoint: tracker, log, revisions |
-| `/research-plans:review` | Score a plan against `references/plan-rubric.md` |
+| `/research-plans:review` | Two-stage review per `references/plan-rubric.md`: threshold verdict (is it a plan?), then engagement grade |
 | `/research-plans:status` | Render tracker, flag drift |
 | `/research-plans:board` | Browser board: tracker, plans + diffs, timeline, scorecards; live annotation or static export |
 

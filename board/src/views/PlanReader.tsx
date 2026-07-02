@@ -209,8 +209,16 @@ export default function PlanReader({
           </div>
         )}
 
+        {parsed?.ok && parsed.serves && (
+          <div className="mb-2">
+            <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-700">
+              Serves: {parsed.serves}
+            </span>
+          </div>
+        )}
+
         {parsed && !parsed.ok && (
-          <Notice text="This plan did not match the expected 7-section format — showing it raw." />
+          <Notice text="This plan did not match the expected execution-plan format — showing it raw." />
         )}
 
         {diffOn && prevDoc ? (
