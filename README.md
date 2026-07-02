@@ -26,8 +26,15 @@ Then restart Claude Code. See [QUICKSTART.md](QUICKSTART.md) for a walkthrough.
 | `/research-plans:sync` | Post-execution checkpoint. Update the tracker, catch unlogged decisions, version the plan if execution deviated. |
 | `/research-plans:review` | Score a plan against the quality rubric, with a split assessment. |
 | `/research-plans:status` | Show the tracker and flag drift. |
+| `/research-plans:board` | Open the board: a browser dashboard over everything, with live annotation or a shareable snapshot. |
 
 Everything is opt-in. The plugin does nothing in projects you have not initialized.
+
+## The board
+
+The board renders the whole project in your browser, in four views: the **Tracker** (components as a status board, with drift flags), the **Plan reader** (any version of any plan, with v1 to v2 diffs and the reason each revision was made), the **Timeline** (decisions, plan versions, and reviews in one stream), and **Reviews** (saved rubric scorecards).
+
+It runs in two modes. **Live**: `/research-plans:board` starts a small local server (python3 only, nothing to install), opens your browser, and waits. Select text in a plan to attach a comment, or leave general comments on any view, then press "Send to Claude" — the feedback lands back in your session, drives plan revisions, and is recorded in the decision log. **Snapshot**: `/research-plans:board --export` writes a single self-contained `plans/board.html` that anyone can open without Claude Code or an internet connection. Snapshots are read-only. Treat the file like publishing your plans: it contains everything under `plans/`.
 
 ## What it creates in your project
 
@@ -35,13 +42,16 @@ Everything is opt-in. The plugin does nothing in projects you have not initializ
 plans/
 ├── master-plan.md              roadmap + components tracker
 ├── decision-log.md             append-only, timestamped
+├── board.html                  optional shareable snapshot (regenerate, never edit)
+├── reviews/
+│   └── 02-analysis-v1.md       saved rubric scorecards
 └── execution/
     └── 01-data-cleaning/
         ├── v1.md               the signed plan
         └── v2.md               a revision; v1 is never edited
 ```
 
-Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions.
+Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions. Unsigned working drafts (`.draft-vN.md`) and board bookkeeping files are gitignored automatically.
 
 ## Principles
 
@@ -51,6 +61,20 @@ Plus a short marked section in your project's `CLAUDE.md` so every future sessio
 - The researcher decides and signs. The AI asks, drafts, and keeps the books.
 
 The workflow comes out of a methods paper on plan-based human-AI research partnerships (reference to follow). The quality rubric bundled with the plugin (`skills/managing-research-plans/references/plan-rubric.md`) is a working draft.
+
+## Developing the board
+
+The board UI is a React app in `board/`, built once into a single committed HTML template at `skills/managing-research-plans/assets/board-template.html`. Researchers never need node; `board.py` only injects data into the prebuilt template. To change the UI:
+
+```
+cd board
+npm install
+npm run dev      # develop against sample data
+npm test         # contract-parser tests (drift alarm for the artifact formats)
+npm run build    # regenerates the committed template
+```
+
+If you change any artifact format (templates or the commands that write them), the parser tests in `board/src/lib/parse.test.ts` are the alarm that the board needs updating.
 
 ## License
 

@@ -49,6 +49,9 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | Master plan | `plans/master-plan.md` | Tracker + context; one-line outcomes |
 | Execution plans | `plans/execution/<NN-slug>/vN.md` | One component each; versions immutable |
 | Decision log | `plans/decision-log.md` | Append-only, timestamped, real-time |
+| Drafts | `plans/execution/<NN-slug>/.draft-vN.md` | Unsigned, mutable, gitignored; deleted on sign-off |
+| Saved reviews | `plans/reviews/<NN-slug>-vN.md` | Rubric scorecards; prose and JSON fence agree |
+| Board snapshot | `plans/board.html` | Read-only export; regenerate, never hand-edit |
 
 | Command | Purpose |
 |---------|---------|
@@ -57,6 +60,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | `/research-plans:sync` | Post-execution checkpoint: tracker, log, revisions |
 | `/research-plans:review` | Score a plan against `references/plan-rubric.md` |
 | `/research-plans:status` | Render tracker, flag drift |
+| `/research-plans:board` | Browser board: tracker, plans + diffs, timeline, scorecards; live annotation or static export |
 
 Judgment criteria live in `references/`: `plan-rubric.md` (quality scoring), `split-criteria.md` (when a plan is too big), `explore-before-planning.md` (bounded data exploration before authoring).
 

@@ -53,6 +53,22 @@ Scores the plan against a 14-item rubric (properties, completeness, engagement q
 
 And `/research-plans:status` at any time shows the tracker and flags drift.
 
+## 6. See the whole project on the board
+
+```
+/research-plans:board
+```
+
+This opens a dashboard in your browser: the tracker as a status board, every plan version with diffs, the decision log as a timeline, and saved review scorecards. It is also where reviewing a plan feels best: select any text to attach a comment, add general comments on any view, then press "Send to Claude". Your comments come back to the session, where Claude walks through them with you, proposes plan revisions where you approved changes, and records the exchange in the decision log.
+
+To share the project state with someone who does not use Claude Code:
+
+```
+/research-plans:board --export
+```
+
+This writes `plans/board.html`, one self-contained file that opens in any browser, offline, read-only. One caution, same as committing plans: the file contains everything under `plans/`, so sharing it is publishing your plans.
+
 ## FAQ
 
 **My project is not a git repository.** Everything works, but the plugin loses git-based evidence (commit timing, staleness checks) and will say so. A git repository is strongly recommended since the version history is part of the point.

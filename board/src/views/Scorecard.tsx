@@ -1,0 +1,209 @@
+import { useState } from "react";
+import Markdown from "../components/Markdown";
+import { GeneralCommentBox } from "../components/AnnotationLayer";
+import { Notice } from "./Tracker";
+import { parseScorecard } from "../lib/parse";
+import type { BoardData } from "../lib/types";
+
+function bandColor(percent: number): string {
+  if (percent < 50) return "bg-red-500";
+  if (percent <= 75) return "bg-amber-500";
+  return "bg-green-600";
+}
+
+export default function Scorecard({
+  data,
+  live,
+  onAddGeneral,
+}: {
+  data: BoardData;
+  live: boolean;
+  onAddGeneral: (view: string, comment: string) => void;
+}) {
+  const reviews = data.files.reviews;
+  const [idx, setIdx] = useState(reviews.length - 1);
+
+  if (reviews.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-stone-300 bg-white p-10 text-center text-sm text-stone-500">
+        No saved reviews yet. Run <code>/research-plans:review</code> and accept
+        the save offer to see scorecards here.
+      </div>
+    );
+  }
+
+  const review = reviews[Math.min(idx, reviews.length - 1)];
+  const sc = parseScorecard(review.content);
+
+  return (
+    <div className="flex gap-5">
+      <aside className="w-56 shrink-0">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+          Saved reviews
+        </h2>
+        <ul className="space-y-1">
+          {reviews.map((r, i) => {
+            const s = parseScorecard(r.content);
+            const label = s
+              ? `${s.component} v${s.planVersion} — ${s.percent}%`
+              : r.path.split("/").pop();
+            return (
+              <li key={r.path}>
+                <button
+                  className={`w-full rounded-md px-2.5 py-1.5 text-left text-sm ${
+                    i === Math.min(idx, reviews.length - 1)
+                      ? "bg-stone-900 font-medium text-white"
+                      : "text-stone-700 hover:bg-stone-100"
+                  }`}
+                  onClick={() => setIdx(i)}
+                >
+                  {label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        {!sc ? (
+          <div>
+            <Notice text="This review has no (valid) machine-readable scorecard block — showing the raw markdown." />
+            <div className="rounded-lg border border-stone-200 bg-white p-6">
+              <Markdown source={review.content} />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-stone-200 bg-white p-5">
+              <div className="flex items-baseline justify-between">
+                <h1 className="text-lg font-bold text-stone-900">
+                  {sc.component} — plan v{sc.planVersion}
+                </h1>
+                <span className="text-xs text-stone-500">
+                  {sc.date} · rubric v{sc.rubricVersion}
+                </span>
+              </div>
+              <div className="mt-3 flex items-center gap-4">
+                <div className="text-3xl font-bold text-stone-900">
+                  {sc.percent}%
+                </div>
+                <div className="flex-1">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
+                    <div
+                      className={`h-full ${bandColor(sc.percent)}`}
+                      style={{ width: `${Math.min(100, sc.percent)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-stone-500">
+                    {sc.raw} / {sc.applicableMax} applicable · band:{" "}
+                    <span className="font-medium text-stone-700">{sc.band}</span>
+                    {sc.excluded && sc.excluded.length > 0 && (
+                      <>
+                        {" "}
+                        · excluded:{" "}
+                        {sc.excluded.map((e) => `#${e.id} (${e.why})`).join("; ")}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-stone-200 text-left text-xs uppercase tracking-wide text-stone-500">
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Item</th>
+                    <th className="px-3 py-2">Score</th>
+                    <th className="px-3 py-2">Evidence</th>
+                    <th className="px-3 py-2">Justification</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sc.items.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="border-b border-stone-100 align-top last:border-0"
+                    >
+                      <td className="px-3 py-2 text-stone-400">{item.id}</td>
+                      <td className="px-3 py-2 font-medium text-stone-800">
+                        {item.name ?? ""}
+                      </td>
+                      <td className="px-3 py-2">
+                        <ScoreChip score={item.score} status={item.status} />
+                      </td>
+                      <td className="px-3 py-2 text-stone-600">
+                        {item.evidence ?? ""}
+                      </td>
+                      <td className="px-3 py-2 text-stone-600">
+                        {item.justification ?? ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {sc.topRevisions && sc.topRevisions.length > 0 && (
+              <div className="rounded-lg border border-stone-200 bg-white p-4">
+                <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+                  Top revisions
+                </h2>
+                <ol className="ml-5 list-decimal space-y-1 text-sm text-stone-700">
+                  {sc.topRevisions.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {sc.split && (
+              <div
+                className={`rounded-lg border p-4 ${
+                  sc.split.verdict === "right-sized"
+                    ? "border-green-200 bg-green-50"
+                    : "border-red-200 bg-red-50"
+                }`}
+              >
+                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-stone-600">
+                  Split assessment — {sc.split.verdict}
+                </h2>
+                <p className="text-sm text-stone-700">{sc.split.detail}</p>
+              </div>
+            )}
+          </div>
+        )}
+        {live && <GeneralCommentBox view="Reviews" onAdd={onAddGeneral} />}
+      </div>
+    </div>
+  );
+}
+
+function ScoreChip({
+  score,
+  status,
+}: {
+  score: number | null;
+  status?: string;
+}) {
+  if (score === null) {
+    return (
+      <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
+        {status ?? "—"}
+      </span>
+    );
+  }
+  const cls =
+    score === 2
+      ? "bg-green-50 text-green-800"
+      : score === 1
+        ? "bg-amber-50 text-amber-800"
+        : "bg-red-50 text-red-700";
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-bold ${cls}`}>
+      {score}
+    </span>
+  );
+}

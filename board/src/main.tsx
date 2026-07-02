@@ -1,0 +1,48 @@
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import type { BoardData } from "./lib/types";
+import "./index.css";
+
+function readSlot(): BoardData | null {
+  const el = document.getElementById("board-data");
+  const txt = el?.textContent?.trim();
+  if (!txt) return null;
+  try {
+    const parsed = JSON.parse(txt);
+    if (parsed && typeof parsed === "object" && parsed.schemaVersion >= 1) {
+      return parsed as BoardData;
+    }
+  } catch {
+    // fall through to null
+  }
+  return null;
+}
+
+function NoData() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-stone-50">
+      <div className="max-w-md rounded-lg border border-stone-200 bg-white p-8 text-center shadow-sm">
+        <h1 className="text-lg font-semibold text-stone-800">
+          Research Plans Board
+        </h1>
+        <p className="mt-3 text-sm text-stone-600">
+          No project data is injected into this page. This file is a template.
+          Generate a real board from your research project with:
+        </p>
+        <pre className="mt-3 rounded bg-stone-100 p-2 text-left text-xs">
+          /research-plans:board
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+let data = readSlot();
+if (!data && import.meta.env.DEV) {
+  data = (await import("./dev-data")).devData;
+}
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>{data ? <App data={data} /> : <NoData />}</StrictMode>,
+);

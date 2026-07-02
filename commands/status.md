@@ -12,6 +12,7 @@ Render the current state of the project and reconcile the master plan against re
    - tracker rows whose Execution plan link points at a missing file;
    - components `in progress` with no git activity for 14+ days (`git log --since`); **no-git fallback:** if not a git repository, use file modification times and note the weaker evidence;
    - a decision log that has stayed empty while execution plans exist (possible logging gap);
-   - unsigned plan versions (no sign-off line).
+   - unsigned plan versions (no sign-off line);
+   - `plans/board.html` older than the newest file under `plans/` (stale snapshot — suggest `/research-plans:board --export` to regenerate).
 
-3. **One suggested next action.** End with a single concrete suggestion — the next `not started` component to plan, a stale component to sync, or a flagged drift to resolve — and which command does it.
+3. **One suggested next action.** End with a single concrete suggestion — the next `not started` component to plan, a stale component to sync, or a flagged drift to resolve — and which command does it. Mention `/research-plans:board` for the visual version of this report.

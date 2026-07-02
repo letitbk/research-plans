@@ -19,6 +19,6 @@ Reconcile the plan artifacts with what actually happened. Skill context: `${CLAU
 
 5. **Split flag.** If execution revealed the component has become multi-component (per `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/references/split-criteria.md`), say so and propose the split as tracker rows.
 
-6. **Version on material deviation.** If step 2 found material deviation, draft `v<N+1>.md`: copy the current version, apply the changes, add the `Supersedes: vN — <what changed and why>` line, and walk the researcher through the diff. Write it **only after the researcher approves and signs**. **Overwrite guard:** compute the next unused version number; if the target exists, stop and ask. `vN.md` is never edited — not even typos.
+6. **Version on material deviation.** If step 2 found material deviation, write the proposed revision to `plans/execution/<NN-slug>/.draft-v<N+1>.md` (resume an existing draft rather than overwriting it): copy the current version, apply the changes, add the `Supersedes: vN — <what changed and why>` line. Walk the researcher through the diff — offer `/research-plans:board <NN-slug>` to review the vN↔draft diff in the browser. Only after the researcher approves and signs, write `v<N+1>.md` (**overwrite guard:** compute the next unused version number; if the target exists, stop and ask) and delete the draft. `vN.md` is never edited — not even typos.
 
 7. **Suggest a commit** naming the change, e.g. `plans: sync — 02-analysis done; v2 supersedes v1 (ICC check)` (do not run without approval).

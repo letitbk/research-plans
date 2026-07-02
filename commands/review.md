@@ -1,7 +1,7 @@
 ---
 description: Score an execution plan against the plan-quality rubric, with a split assessment
 argument-hint: [plan path or component name/number]
-allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(ls:*)
+allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(git:*), Bash(ls:*), Bash(date:*), Bash(mkdir:*)
 ---
 
 Score one execution plan against the rubric at `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/references/plan-rubric.md`. Requires an initialized project; if `plans/master-plan.md` is absent, say so and stop.
@@ -20,4 +20,6 @@ Score one execution plan against the rubric at `${CLAUDE_PLUGIN_ROOT}/skills/man
    - the **top three concrete revisions** that would most improve the plan, each actionable ("add a Why for the DV choice grounded in the codebook", not "improve engagement");
    - a mandatory **Split assessment**: item 14 elaborated per `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/references/split-criteria.md` — either "right-sized" with a reason, or the concrete proposed split.
 
-4. **If the researcher accepts a revision or a split, that is a decision** — append it to `plans/decision-log.md` (real timestamp), and route the change properly: plan revisions go through a new signed version (see `/research-plans:sync` step 6 semantics — never edit `vN.md`), splits go through tracker rows.
+4. **Offer to save the scorecard.** Offer to write the review to `plans/reviews/<NN-slug>-v<N>.md` using the template at `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/templates/review-scorecard.md`. The human-readable sections and the ```json board-scorecard``` fence must agree — the board renders the JSON. If the file already exists, ask before overwriting. Saved scorecards appear on the board's Reviews tab (`/research-plans:board`).
+
+5. **If the researcher accepts a revision or a split, that is a decision** — append it to `plans/decision-log.md` (real timestamp), and route the change properly: plan revisions go through a new signed version (see `/research-plans:sync` step 6 semantics — never edit `vN.md`), splits go through tracker rows.

@@ -1,0 +1,163 @@
+import { useMemo, useState } from "react";
+import Markdown from "../components/Markdown";
+import { GeneralCommentBox } from "../components/AnnotationLayer";
+import {
+  parseDecisionLog,
+  parseExecutionPlan,
+  parseScorecard,
+} from "../lib/parse";
+import type { BoardData } from "../lib/types";
+
+type EventKind = "decision" | "plan" | "review";
+
+interface TimelineEvent {
+  kind: EventKind;
+  sortKey: string; // ISO-ish, sortable
+  title: string;
+  badge?: string;
+  body: string; // markdown
+  searchText: string;
+}
+
+const KIND_STYLE: Record<EventKind, { dot: string; label: string }> = {
+  decision: { dot: "bg-blue-500", label: "Decision" },
+  plan: { dot: "bg-stone-800", label: "Plan version" },
+  review: { dot: "bg-purple-500", label: "Review" },
+};
+
+export default function Timeline({
+  data,
+  live,
+  onAddGeneral,
+}: {
+  data: BoardData;
+  live: boolean;
+  onAddGeneral: (view: string, comment: string) => void;
+}) {
+  const events = useMemo(() => buildEvents(data), [data]);
+  const [filter, setFilter] = useState<EventKind | "all">("all");
+  const [query, setQuery] = useState("");
+
+  const visible = events.filter((e) => {
+    if (filter !== "all" && e.kind !== filter) return false;
+    if (query && !e.searchText.toLowerCase().includes(query.toLowerCase()))
+      return false;
+    return true;
+  });
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(["all", "decision", "plan", "review"] as const).map((k) => (
+          <button
+            key={k}
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              filter === k
+                ? "border-stone-900 bg-stone-900 text-white"
+                : "border-stone-300 bg-white text-stone-600 hover:border-stone-500"
+            }`}
+            onClick={() => setFilter(k)}
+          >
+            {k === "all" ? "All" : KIND_STYLE[k].label + "s"}
+          </button>
+        ))}
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search…"
+          className="ml-auto w-52 rounded-md border border-stone-300 px-2.5 py-1 text-sm outline-none focus:border-stone-500"
+        />
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-stone-300 bg-white p-10 text-center text-sm text-stone-500">
+          {events.length === 0
+            ? "Nothing logged yet. Entries appear here as decisions happen."
+            : "No events match the current filter."}
+        </div>
+      ) : (
+        <ol className="relative ml-2 space-y-4 border-l border-stone-200 pl-6">
+          {visible.map((e, i) => (
+            <li key={i} className="relative">
+              <span
+                className={`absolute -left-[31px] top-1.5 h-2.5 w-2.5 rounded-full ${KIND_STYLE[e.kind].dot}`}
+              />
+              <div className="rounded-lg border border-stone-200 bg-white p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                  <span className="font-medium text-stone-700">
+                    {KIND_STYLE[e.kind].label}
+                  </span>
+                  <span>{e.sortKey}</span>
+                  <span className="font-medium text-stone-700">{e.title}</span>
+                  {e.badge && (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                      {e.badge}
+                    </span>
+                  )}
+                </div>
+                <Markdown source={e.body} className="text-sm" />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {live && <GeneralCommentBox view="Timeline" onAdd={onAddGeneral} />}
+    </div>
+  );
+}
+
+function buildEvents(data: BoardData): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  for (const entry of parseDecisionLog(data.files.decisionLog.content)) {
+    events.push({
+      kind: "decision",
+      sortKey: entry.timestamp,
+      title: "",
+      badge: entry.lateCaptured ? "late-captured at sync" : undefined,
+      body: entry.raw,
+      searchText: entry.raw,
+    });
+  }
+
+  for (const group of data.files.executionPlans) {
+    for (const v of group.versions) {
+      const parsed = parseExecutionPlan(v.content);
+      const gitDate = data.git.fileDates?.[v.path]?.firstCommit;
+      const date = parsed.date ?? (gitDate ? gitDate.slice(0, 10) : null);
+      events.push({
+        kind: "plan",
+        sortKey: date ? `${date} 00:00` : "0000-00-00 00:00",
+        title: `${group.component} v${v.version}`,
+        body: parsed.supersedes
+          ? `**Supersedes:** ${parsed.supersedes}`
+          : `Plan v${v.version} committed${parsed.signedOff ? ` — signed off: ${parsed.signedOff}` : ""}.`,
+        searchText: `${group.component} v${v.version} ${parsed.supersedes ?? ""}`,
+      });
+    }
+  }
+
+  for (const r of data.files.reviews) {
+    const sc = parseScorecard(r.content);
+    if (sc) {
+      events.push({
+        kind: "review",
+        sortKey: `${sc.date} 00:00`,
+        title: `${sc.component} v${sc.planVersion}`,
+        body: `Scored **${sc.raw}/${sc.applicableMax} (${sc.percent}%)** — ${sc.band}.`,
+        searchText: `review ${sc.component} ${sc.band}`,
+      });
+    } else {
+      events.push({
+        kind: "review",
+        sortKey: "0000-00-00 00:00",
+        title: r.path,
+        body: "Saved review (no scorecard data block).",
+        searchText: `review ${r.path}`,
+      });
+    }
+  }
+
+  return events.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+}
