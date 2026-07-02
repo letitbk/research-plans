@@ -1,0 +1,18 @@
+{
+  "name": "research-plans",
+  "owner": {
+    "name": "letitbk",
+    "email": "bklee@nyu.edu"
+  },
+  "plugins": [
+    {
+      "name": "research-plans",
+      "source": "./",
+      "description": "Plan-based AI research workflows: master plan with tracker, versioned execution plans, decision log, plan-quality rubric.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Byungkyu Lee"
+      }
+    }
+  ]
+}
