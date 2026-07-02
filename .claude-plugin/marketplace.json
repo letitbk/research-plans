@@ -1,5 +1,6 @@
 {
   "name": "research-plans",
+  "description": "Plan-based AI research workflows for social science research projects.",
   "owner": {
     "name": "letitbk",
     "email": "bklee@nyu.edu"
