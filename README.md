@@ -69,10 +69,18 @@ plans/
 └── execution/
     └── 01-data-cleaning/
         ├── v1.md               the signed plan
-        └── v2.md               a revision; v1 is never edited
+        ├── v2.md               a revision; v1 is never edited
+        └── results/
+            ├── r1/             an immutable results bundle
+            │   ├── manifest.json   what's here, plan version, provenance, metrics
+            │   ├── report.md       brief agent-drafted report
+            │   ├── verdict.json    your accept/request-changes, written once
+            │   ├── artifacts/      figure/table snapshots (sha256-verified)
+            │   └── scripts/        the code that produced them
+            └── r2/             a redo; r1 is never edited
 ```
 
-Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions. Unsigned working drafts (`.draft-vN.md`) and board bookkeeping files are gitignored automatically.
+Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions. Unsigned working drafts (`.draft-vN.md`), results staging directories (`.staging-*`), and board bookkeeping files are gitignored automatically.
 
 ## Principles
 
