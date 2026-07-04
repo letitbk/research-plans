@@ -466,9 +466,10 @@ def parse_fence(doc):
     if not m:
         return None
     try:
-        return json.loads(m.group(1))
+        meta = json.loads(m.group(1))
     except ValueError:
         return None
+    return meta if isinstance(meta, dict) else None
 
 
 def collect_file(root, path):

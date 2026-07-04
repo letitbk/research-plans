@@ -212,6 +212,20 @@ class TestCollectFile(unittest.TestCase):
             self.assertIn("no parseable", r.stderr)
             self.assertIn("No fence here", r.stdout)
 
+    def test_collect_file_non_dict_fence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            f = root / "feedback.txt"
+            f.write_text(
+                "# Board Feedback\n\nBody.\n\n```json board-feedback\n[1, 2, 3]\n```\n",
+                encoding="utf-8",
+            )
+            r = run_board(root, "--collect", str(f))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("no parseable", r.stderr)
+            self.assertIn("Body.", r.stdout)
+
     def test_collect_pending_still_deletes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
