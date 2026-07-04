@@ -146,7 +146,7 @@ def collect_payload(root, mode, focus):
                 versions.append(entry)
             versions.sort(key=lambda v: v["version"])
             group = {"component": comp_dir.name, "versions": versions}
-            if mode == "live":
+            if mode in ("live", "remote"):
                 drafts = sorted(comp_dir.glob(".draft-v*.md"))
                 if drafts:
                     d = drafts[-1]
@@ -171,6 +171,16 @@ def collect_payload(root, mode, focus):
         else {"path": "plans/decision-log.md", "content": "# Decision Log\n"}
     )
 
+    if mode == "remote" and focus:
+        exec_groups = [g for g in exec_groups if g["component"] == focus]
+        if not exec_groups:
+            die("no execution plans found for --focus %s" % focus)
+        reviews = []
+        decision_log = {
+            "path": "plans/decision-log.md",
+            "content": "# Decision Log\n\n(omitted from focused share)\n",
+        }
+
     all_paths = ["plans/master-plan.md", "plans/decision-log.md"]
     for g in exec_groups:
         all_paths.extend(v["path"] for v in g["versions"])
@@ -192,6 +202,8 @@ def collect_payload(root, mode, focus):
     }
     if mode == "live":
         payload["project"]["root"] = str(root)
+    elif mode == "remote":
+        payload["shareHash"] = share_hash(payload_files(payload))
     return payload
 
 

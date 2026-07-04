@@ -93,5 +93,41 @@ class TestShareHash(unittest.TestCase):
         ]))
 
 
+class TestRemotePayload(unittest.TestCase):
+    def test_remote_payload_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            payload = board.collect_payload(root, "remote", None)
+            self.assertEqual(payload["mode"], "remote")
+            self.assertNotIn("root", payload["project"])
+            self.assertRegex(payload["shareHash"], r"^[0-9a-f]{16}$")
+            groups = {g["component"]: g for g in payload["files"]["executionPlans"]}
+            self.assertIn("draft", groups["01-data-prep"])  # drafts included in remote
+            self.assertEqual(groups["01-data-prep"]["draft"]["proposedVersion"], 2)
+
+    def test_focused_remote_payload_prunes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            payload = board.collect_payload(root, "remote", "01-data-prep")
+            comps = [g["component"] for g in payload["files"]["executionPlans"]]
+            self.assertEqual(comps, ["01-data-prep"])
+            self.assertEqual(payload["files"]["reviews"], [])
+            self.assertIn("omitted", payload["files"]["decisionLog"]["content"])
+            self.assertNotIn("Secret log entry", payload["files"]["decisionLog"]["content"])
+            # master plan stays fully visible by design
+            self.assertIn("Master Plan", payload["files"]["masterPlan"]["content"])
+
+    def test_static_payload_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            payload = board.collect_payload(root, "static", None)
+            self.assertNotIn("shareHash", payload)
+            groups = {g["component"]: g for g in payload["files"]["executionPlans"]}
+            self.assertNotIn("draft", groups["01-data-prep"])
+
+
 if __name__ == "__main__":
     unittest.main()
