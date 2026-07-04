@@ -4,6 +4,11 @@ import PlanReader from "./views/PlanReader";
 import Timeline from "./views/Timeline";
 import Scorecard from "./views/Scorecard";
 import { allFiles, payloadContentHash } from "./lib/parse";
+import {
+  buildFeedbackDocument,
+  feedbackFilename,
+  newSessionId,
+} from "./lib/feedback";
 import type {
   Annotation,
   BoardData,
@@ -32,6 +37,7 @@ export default function App({ data }: { data: BoardData }) {
   const gate = data.gate ?? null;
   const payloadHash = useMemo(() => payloadContentHash(allFiles(data)), [data]);
   const storageKey = `rp-board:${data.project.name}:${payloadHash}`;
+  const sessionId = useMemo(() => newSessionId(), []);
 
   const [tab, setTab] = useState<Tab>(
     gate || data.focus ? "plans" : "tracker",
@@ -50,8 +56,25 @@ export default function App({ data }: { data: BoardData }) {
   });
   const [drawerOpen, setDrawerOpen] = useState(gate !== null);
   const [submitState, setSubmitState] = useState<
-    "idle" | "sending" | "sent" | "approved" | "denied" | "failed"
+    "idle" | "sending" | "sent" | "approved" | "denied" | "failed" | "downloaded"
   >("idle");
+  const [reviewer, setReviewer] = useState<string>(() => {
+    if (!remote) return "";
+    try {
+      return localStorage.getItem(`${storageKey}:reviewer`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    if (!remote) return;
+    try {
+      localStorage.setItem(`${storageKey}:reviewer`, reviewer);
+    } catch {
+      // storage unavailable — name still lives in memory
+    }
+  }, [reviewer, remote, storageKey]);
 
   useEffect(() => {
     if (!canAnnotate) return;
@@ -106,6 +129,21 @@ export default function App({ data }: { data: BoardData }) {
     [annotations],
   );
 
+  const feedbackDocument = useMemo(
+    () =>
+      buildFeedbackDocument(feedbackMarkdown, {
+        sessionId,
+        generatedAt: data.generatedAt,
+        mode: data.mode,
+        focus: data.focus,
+        reviewer: remote ? reviewer.trim() || "anonymous reviewer" : null,
+        payloadHash,
+        shareHash: data.shareHash ?? null,
+        annotations,
+      }),
+    [feedbackMarkdown, sessionId, data, remote, reviewer, payloadHash, annotations],
+  );
+
   const submit = async () => {
     setSubmitState("sending");
     try {
@@ -116,6 +154,7 @@ export default function App({ data }: { data: BoardData }) {
           annotations,
           feedbackMarkdown,
           payloadHash,
+          feedbackDocument,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -128,6 +167,23 @@ export default function App({ data }: { data: BoardData }) {
     } catch {
       setSubmitState("failed");
     }
+  };
+
+  const download = () => {
+    const blob = new Blob([feedbackDocument], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = feedbackFilename(
+      data.project.name,
+      remote ? reviewer : null,
+      sessionId,
+    );
+    a.click();
+    URL.revokeObjectURL(url);
+    setSubmitState("downloaded");
   };
 
   const gateApprove = async () => {
@@ -162,10 +218,10 @@ export default function App({ data }: { data: BoardData }) {
 
   const copyFallback = async () => {
     try {
-      await navigator.clipboard.writeText(feedbackMarkdown);
+      await navigator.clipboard.writeText(feedbackDocument);
       alert("Feedback copied — paste it into your Claude Code session.");
     } catch {
-      window.prompt("Copy the feedback below:", feedbackMarkdown);
+      window.prompt("Copy the feedback below:", feedbackDocument);
     }
   };
 
@@ -253,6 +309,19 @@ export default function App({ data }: { data: BoardData }) {
               ? ` at commit ${data.git.head}`
               : ""}{" "}
             — regenerate with /research-plans:board --export
+          </div>
+        )}
+        {remote && (
+          <div className="border-t border-blue-200 bg-blue-50 px-5 py-2 text-xs leading-relaxed text-blue-900">
+            <span className="font-medium">
+              You’ve been asked to review this research plan.
+            </span>{" "}
+            Select text in any plan to attach a comment, or use the comment
+            boxes on the other tabs. When you’re done, open Feedback and press
+            “Download feedback file”, then email the downloaded file back to
+            the researcher. Don’t move or rename this HTML file until you’ve
+            downloaded your feedback — your comments are saved by this browser
+            against this file’s location.
           </div>
         )}
         {gate && (
@@ -387,7 +456,7 @@ export default function App({ data }: { data: BoardData }) {
                   Request changes ({annotations.length})
                 </button>
               </div>
-            ) : (
+            ) : canPost ? (
               <button
                 className="w-full rounded-md bg-stone-900 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-40"
                 disabled={annotations.length === 0 || submitState === "sending"}
@@ -395,6 +464,34 @@ export default function App({ data }: { data: BoardData }) {
               >
                 {submitState === "sending" ? "Sending…" : "Send to Claude"}
               </button>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  className="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+                  placeholder="Your name (for attribution)"
+                  value={reviewer}
+                  onChange={(e) => setReviewer(e.target.value)}
+                />
+                {submitState === "downloaded" && (
+                  <p className="rounded-md border border-green-200 bg-green-50 p-2 text-[11px] text-green-800">
+                    Feedback file downloaded — email it back to the researcher.
+                    You can keep annotating and download again.
+                  </p>
+                )}
+                <button
+                  className="w-full rounded-md bg-stone-900 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-40"
+                  disabled={annotations.length === 0}
+                  onClick={download}
+                >
+                  Download feedback file
+                </button>
+                <button
+                  className="block w-full text-center text-[11px] text-stone-500 underline hover:text-stone-700"
+                  onClick={copyFallback}
+                >
+                  or copy feedback to clipboard
+                </button>
+              </div>
             )}
           </div>
         </aside>
