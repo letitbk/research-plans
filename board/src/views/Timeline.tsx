@@ -27,11 +27,11 @@ const KIND_STYLE: Record<EventKind, { dot: string; label: string }> = {
 
 export default function Timeline({
   data,
-  live,
+  canAnnotate,
   onAddGeneral,
 }: {
   data: BoardData;
-  live: boolean;
+  canAnnotate: boolean;
   onAddGeneral: (view: string, comment: string) => void;
 }) {
   const events = useMemo(() => buildEvents(data), [data]);
@@ -102,7 +102,7 @@ export default function Timeline({
         </ol>
       )}
 
-      {live && <GeneralCommentBox view="Timeline" onAdd={onAddGeneral} />}
+      {canAnnotate && <GeneralCommentBox view="Timeline" onAdd={onAddGeneral} />}
     </div>
   );
 }

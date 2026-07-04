@@ -21,7 +21,7 @@ interface DocRef {
 
 export default function PlanReader({
   data,
-  live,
+  canAnnotate,
   selectedComponent,
   onSelectComponent,
   annotations,
@@ -29,7 +29,7 @@ export default function PlanReader({
   onPaintResult,
 }: {
   data: BoardData;
-  live: boolean;
+  canAnnotate: boolean;
   selectedComponent: string | null;
   onSelectComponent: (slug: string) => void;
   annotations: Annotation[];
@@ -232,7 +232,7 @@ export default function PlanReader({
             ref={scrollRef}
             className="rounded-lg border border-stone-200 bg-white p-6"
           >
-            {live ? (
+            {canAnnotate ? (
               <AnnotationLayer
                 docKey={doc.path}
                 annotations={docAnnotations}
@@ -267,7 +267,7 @@ export default function PlanReader({
             )}
           </div>
         )}
-        {live && (
+        {canAnnotate && (
           <p className="mt-2 text-xs text-stone-400">
             Select any text in the plan to attach a comment.
           </p>

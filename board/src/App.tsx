@@ -26,7 +26,9 @@ function nextId(): string {
 }
 
 export default function App({ data }: { data: BoardData }) {
-  const live = data.mode === "live";
+  const canAnnotate = data.mode === "live" || data.mode === "remote";
+  const canPost = data.mode === "live";
+  const remote = data.mode === "remote";
   const gate = data.gate ?? null;
   const payloadHash = useMemo(() => payloadContentHash(allFiles(data)), [data]);
   const storageKey = `rp-board:${data.project.name}:${payloadHash}`;
@@ -38,7 +40,7 @@ export default function App({ data }: { data: BoardData }) {
     gate?.component ?? data.focus,
   );
   const [annotations, setAnnotations] = useState<Annotation[]>(() => {
-    if (!live) return [];
+    if (!canAnnotate) return [];
     try {
       const saved = localStorage.getItem(storageKey);
       return saved ? (JSON.parse(saved) as Annotation[]) : [];
@@ -52,13 +54,13 @@ export default function App({ data }: { data: BoardData }) {
   >("idle");
 
   useEffect(() => {
-    if (!live) return;
+    if (!canAnnotate) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(annotations));
     } catch {
       // storage full/unavailable — annotations still live in memory
     }
-  }, [annotations, live, storageKey]);
+  }, [annotations, canAnnotate, storageKey]);
 
   const addPlanComment = useCallback(
     (a: Omit<PlanCommentAnnotation, "id" | "type">) => {
@@ -235,7 +237,7 @@ export default function App({ data }: { data: BoardData }) {
               </button>
             ))}
           </nav>
-          {live && (
+          {canAnnotate && (
             <button
               className="ml-auto rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:border-stone-500"
               onClick={() => setDrawerOpen((o) => !o)}
@@ -244,7 +246,7 @@ export default function App({ data }: { data: BoardData }) {
             </button>
           )}
         </div>
-        {!live && (
+        {data.mode === "static" && (
           <div className="border-t border-amber-200 bg-amber-50 px-5 py-1.5 text-center text-xs text-amber-900">
             Read-only snapshot generated {data.generatedAt.slice(0, 16)}
             {data.git.available && data.git.head
@@ -265,7 +267,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "tracker" && (
           <Tracker
             data={data}
-            live={live}
+            canAnnotate={canAnnotate}
             onAddGeneral={addGeneral}
             onOpenComponent={(slug) => {
               setSelectedComponent(slug);
@@ -276,7 +278,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "plans" && (
           <PlanReader
             data={data}
-            live={live}
+            canAnnotate={canAnnotate}
             selectedComponent={selectedComponent}
             onSelectComponent={setSelectedComponent}
             annotations={annotations}
@@ -285,14 +287,14 @@ export default function App({ data }: { data: BoardData }) {
           />
         )}
         {tab === "timeline" && (
-          <Timeline data={data} live={live} onAddGeneral={addGeneral} />
+          <Timeline data={data} canAnnotate={canAnnotate} onAddGeneral={addGeneral} />
         )}
         {tab === "reviews" && (
-          <Scorecard data={data} live={live} onAddGeneral={addGeneral} />
+          <Scorecard data={data} canAnnotate={canAnnotate} onAddGeneral={addGeneral} />
         )}
       </main>
 
-      {live && drawerOpen && (
+      {canAnnotate && drawerOpen && (
         <aside className="fixed right-0 top-0 z-40 flex h-full w-80 flex-col border-l border-stone-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-stone-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-stone-800">

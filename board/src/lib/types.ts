@@ -3,8 +3,9 @@
 export interface BoardData {
   schemaVersion: number;
   generatedAt: string;
-  mode: "live" | "static";
+  mode: "live" | "static" | "remote";
   focus: string | null;
+  shareHash?: string; // remote mode: Python-computed, echoed back in feedback
   gate?: { component: string; proposedVersion: number }; // sign-off gate mode
   project: { name: string; root?: string };
   git: {

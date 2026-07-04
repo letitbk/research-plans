@@ -19,12 +19,12 @@ function slugFromLink(link: string): string | null {
 
 export default function Tracker({
   data,
-  live,
+  canAnnotate,
   onOpenComponent,
   onAddGeneral,
 }: {
   data: BoardData;
-  live: boolean;
+  canAnnotate: boolean;
   onOpenComponent: (slug: string | null, name: string) => void;
   onAddGeneral: (view: string, comment: string) => void;
 }) {
@@ -237,7 +237,7 @@ export default function Tracker({
         </section>
       )}
 
-      {live && <GeneralCommentBox view="Tracker" onAdd={onAddGeneral} />}
+      {canAnnotate && <GeneralCommentBox view="Tracker" onAdd={onAddGeneral} />}
     </div>
   );
 }

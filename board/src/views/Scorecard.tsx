@@ -13,11 +13,11 @@ function bandColor(percent: number): string {
 
 export default function Scorecard({
   data,
-  live,
+  canAnnotate,
   onAddGeneral,
 }: {
   data: BoardData;
-  live: boolean;
+  canAnnotate: boolean;
   onAddGeneral: (view: string, comment: string) => void;
 }) {
   const reviews = data.files.reviews;
@@ -245,7 +245,7 @@ export default function Scorecard({
             )}
           </div>
         )}
-        {live && <GeneralCommentBox view="Reviews" onAdd={onAddGeneral} />}
+        {canAnnotate && <GeneralCommentBox view="Reviews" onAdd={onAddGeneral} />}
       </div>
     </div>
   );
