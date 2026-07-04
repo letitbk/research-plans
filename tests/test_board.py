@@ -129,5 +129,35 @@ class TestRemotePayload(unittest.TestCase):
             self.assertNotIn("draft", groups["01-data-prep"])
 
 
+class TestShareCli(unittest.TestCase):
+    def test_share_writes_remote_board(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            r = run_board(root, "--share")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = Path(r.stdout.strip()).resolve()
+            self.assertEqual(out, (root / "plans" / "board-share.html").resolve())
+            payload = extract_payload(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload["mode"], "remote")
+            self.assertIn("shareHash", payload)
+            self.assertNotIn("root", payload["project"])
+            self.assertIn("publishes", r.stderr)
+            gi = (root / "plans" / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn("/board-share.html", gi)
+
+    def test_share_focus_and_custom_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            r = run_board(root, "--share", "out/custom.html", "--focus", "01-data-prep")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = extract_payload(
+                (root / "out" / "custom.html").resolve().read_text(encoding="utf-8"))
+            comps = [g["component"] for g in payload["files"]["executionPlans"]]
+            self.assertEqual(comps, ["01-data-prep"])
+            self.assertNotIn("Secret other plan", json.dumps(payload))
+
+
 if __name__ == "__main__":
     unittest.main()

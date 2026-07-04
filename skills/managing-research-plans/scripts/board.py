@@ -31,6 +31,7 @@ SLOT_OPEN = '<script id="board-data" type="application/json">'
 GITIGNORE_LINES = [
     "/.board-feedback.md",
     "/.board.lock",
+    "/board-share.html",
     "/execution/*/.draft-v*.md",
     "/execution/*/.gate-*.md",
 ]
@@ -420,6 +421,34 @@ def export(root, args):
     sys.exit(0)
 
 
+def share(root, args):
+    payload = collect_payload(root, "remote", args.focus)
+    html = inject(template_path().read_text(encoding="utf-8"), payload)
+    out = (
+        Path(args.share) if args.share != "DEFAULT"
+        else root / "plans" / "board-share.html"
+    )
+    if not out.is_absolute():
+        out = root / out
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    ensure_gitignore(root / "plans")
+    print(str(out))
+    if args.focus:
+        print(
+            "Reminder: emailing this file publishes the focused component's "
+            "plans plus the full master plan to the recipient.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "Reminder: emailing this file publishes everything under plans/ "
+            "to the recipient. Use --focus NN-slug to share one component.",
+            file=sys.stderr,
+        )
+    sys.exit(0)
+
+
 def collect_pending(root):
     pending = root / "plans" / ".board-feedback.md"
     if not pending.is_file():
@@ -464,6 +493,7 @@ def main():
     ap = argparse.ArgumentParser(description="research-plans board")
     ap.add_argument("--focus", default=None, metavar="NN-slug")
     ap.add_argument("--export", nargs="?", const="DEFAULT", default=None, metavar="PATH")
+    ap.add_argument("--share", nargs="?", const="DEFAULT", default=None, metavar="PATH")
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--gate", default=None, metavar="SLUG/vN")
     ap.add_argument("--port", type=int, default=0)
@@ -482,6 +512,8 @@ def main():
 
     if args.collect:
         collect_pending(root)
+    elif args.share is not None:
+        share(root, args)
     elif args.export is not None:
         export(root, args)
     else:
