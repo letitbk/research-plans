@@ -362,6 +362,20 @@ class TestAssets(unittest.TestCase):
         self.assertEqual(board.split_focus(None), (None, None))
 
 
+class TestExportResults(unittest.TestCase):
+    def test_export_embeds_bundles_and_data_uris(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            p = run_board(root, "--export")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            payload = extract_payload((root / "plans" / "board.html").read_text())
+            g = next(g for g in payload["files"]["executionPlans"]
+                     if g["component"] == "01-data-prep")
+            self.assertTrue(
+                g["results"][0]["assets"]["fig1.png"].startswith("data:image/png;base64,"))
+
+
 class TestDocumentFromBody(unittest.TestCase):
     PAYLOAD = {"generatedAt": "2026-07-03T12:00:00", "mode": "live", "focus": None}
 
