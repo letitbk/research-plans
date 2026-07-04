@@ -3,3 +3,4 @@
 logs/
 board/node_modules/
 board/dist/
+.superpowers/
