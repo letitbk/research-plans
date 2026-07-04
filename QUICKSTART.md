@@ -69,6 +69,8 @@ To share the project state with someone who does not use Claude Code:
 
 This writes `plans/board.html`, one self-contained file that opens in any browser, offline, read-only. One caution, same as committing plans: the file contains everything under `plans/`, so sharing it is publishing your plans.
 
+To get feedback from a collaborator who does not use Claude Code, `/research-plans:board --share` emails just as easily — they annotate in their browser and send back a feedback file that `/research-plans:board --collect <file>` routes into your session with attribution.
+
 ## FAQ
 
 **My project is not a git repository.** Everything works, but the plugin loses git-based evidence (commit timing, staleness checks) and will say so. A git repository is strongly recommended since the version history is part of the point.

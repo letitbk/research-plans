@@ -38,6 +38,8 @@ The board renders the whole project in your browser, in four views: the **Tracke
 
 It runs in two modes. **Live**: `/research-plans:board` starts a small local server (python3 only, nothing to install), opens your browser, and waits. Select text in a plan to attach a comment, or leave general comments on any view, then press "Send to Claude" — the feedback lands back in your session, drives plan revisions, and is recorded in the decision log. **Snapshot**: `/research-plans:board --export` writes a single self-contained `plans/board.html` that anyone can open without Claude Code or an internet connection. Snapshots are read-only. Treat the file like publishing your plans: it contains everything under `plans/`.
 
+- **Share with collaborators**: `--share` exports an annotatable board file you can email; collaborators comment in their browser and send back a feedback file that `--collect <file>` routes with attribution.
+
 ## The sign-off gate
 
 Signing a plan is enforced, not offered. The plugin ships a PreToolUse hook: whenever Claude tries to write a signed version file (`plans/execution/<component>/vN.md`) in an initialized project, the write is blocked while the proposed plan opens in your browser — rendered, with the diff against the previous version. You either approve (the version is written exactly as shown) or request changes with comments (the write is denied, your feedback goes back to Claude, and the gate reopens on the next attempt). The same hook mechanically enforces immutability: edits to or overwrites of an existing signed version are always denied.
