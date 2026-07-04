@@ -1,8 +1,11 @@
 # Results layer — design
 
 **Date:** 2026-07-03
-**Target release:** v0.5.0
-**Status:** approved by BK (brainstorming session, 2026-07-03)
+**Target release:** v0.6.0 (v0.5.0 is the remote-plan-review feature, in flight on
+`feature/remote-plan-review`; this feature lives on `feature/results-layer`)
+**Status:** approved by BK (brainstorming session, 2026-07-03); revised same day
+after cross-model review (Codex GPT-5.5 + Gemini 3.1 Pro) — amendments marked
+inline where they changed the design
 
 ## Problem
 
@@ -121,25 +124,54 @@ Field notes:
   "status": "accepted",
   "date": "2026-07-04 09:10",
   "planVersion": 1,
+  "reviewer": "BK",
   "comment": "optional one-liner from the researcher"
 }
 ```
 
 `status` ∈ `accepted` | `changes-requested`. Absence of the file means pending. The
 file is written once; a changes-requested bundle keeps that record forever — the fix
-arrives as the next `r` version.
+arrives as the next `r` version. `reviewer` defaults to git `user.name` (review
+amendment: verdicts need attribution).
 
-### Immutability
+### Immutability — staging protocol (review amendment)
 
-A bundle is never edited after capture, with one exception: `verdict.json` may be
-*created* once. `signoff_gate.py` (the existing PreToolUse hook) is extended to
-mechanically deny Write/Edit to any file inside an existing `results/r*/` directory,
-allowing only (a) creation of a new `rN/` directory with the next unused number and
-(b) one-time creation of a missing `verdict.json`. This is immutability enforcement
-only — there is **no** verdict gate; nothing blocks tracker updates on unverified
-results. Shell redirection remains out of scope, exactly as for plan versions.
+A capture writes many files; a naive "deny writes inside existing `r*/`" rule would
+block every file after the first. So capture goes through staging:
+
+1. All bundle files are written to `results/.staging-<id>/` (gitignored, freely
+   writable, resumable like plan drafts).
+2. `results.py finalize` validates the staged bundle (manifest parses, files
+   referenced exist, checksums match) and atomically renames it to the next unused
+   `rN/`.
+
+Only **finalized** bundles are immutable. `signoff_gate.py` (the existing PreToolUse
+hook) is extended to deny Write/Edit to any file inside an existing `results/r*/`
+directory, with one exception: one-time creation of a missing `verdict.json`.
+Critically, the results branch of the hook is **synchronous file-policy only** — it
+never opens the browser gate UI (that would deadlock capture). This is immutability
+enforcement only — there is **no** verdict gate; nothing blocks tracker updates on
+unverified results. Shell redirection remains out of scope, exactly as for plan
+versions.
 
 ## Capture flows
+
+### `results.py` — the shared helper (review amendment)
+
+"Two entry points, one code path" needs real shared code, not duplicated command
+prose — `/sync`'s allowed tools (`git`, `ls`, `date`) cannot copy files or compute
+hashes. A new `skills/managing-research-plans/scripts/results.py` (python3 stdlib
+only, like `board.py`) owns the mechanics, with subcommands:
+
+- `discover` — candidate artifacts (recently changed output files; excludes
+  anything under `plans/execution/**/results/**` so bundles never adopt themselves)
+- `stage` — create/resume `.staging-<id>/`, copy artifacts + script snapshots,
+  compute sha256s, apply the size cap
+- `finalize` — validate the staged bundle and atomically rename to the next `rN/`
+- `verdict` — one-time creation of `verdict.json` for a finalized bundle
+
+Both commands call it; the interview and report drafting remain the agent's job.
+`/results` and `/sync` get `Bash(python3:*)`-scoped access to this script.
 
 ### `/research-plans:results <component>`
 
@@ -152,8 +184,10 @@ results. Shell redirection remains out of scope, exactly as for plan versions.
 3. **Draft `report.md`.** Brief: what ran, what came out, how it meets or misses the
    plan's success criteria, anomalies worth the researcher's eyes. No overclaiming —
    the report cites artifacts by id, and claims must trace to an artifact or metric.
-4. **Write the bundle.** Copy artifacts and script snapshots, compute sha256s, write
-   `manifest.json`. Next unused `rN` number (the hook also enforces this).
+4. **Write the bundle.** `results.py stage` copies artifacts and script snapshots
+   into `.staging-<id>/` and computes sha256s; the agent writes `report.md` and
+   `manifest.json` there; `results.py finalize` validates and atomically renames to
+   the next unused `rN/` (the hook also enforces immutability after that point).
 5. **Offer the board.** Open `/research-plans:board` focused on the new bundle for
    review and verdict.
 
@@ -171,7 +205,10 @@ researcher or session context can name them; unknown producers are recorded as
 
 One new step after the tracker update: for each component whose status moved to
 `done`, or whose outputs on disk are newer than its latest bundle, offer to run the
-capture flow. Never capture silently.
+capture flow. Never capture silently. "Newer" is defined concretely (review
+amendment): a source file recorded in the latest manifest whose current sha256
+differs from the recorded one, or files in the discovery scope modified after the
+bundle's `capturedAt`.
 
 ## Board integration
 
@@ -179,11 +216,25 @@ capture flow. Never capture silently.
 
 `BoardData.files.executionPlans[]` groups gain
 `results: ResultsBundle[]` — manifest (parsed), `report.md` content, `verdict.json`
-if present, and script snapshot text. Artifact bytes are **not** inlined in live
-mode: the existing HTTP server gains a `GET /artifact/<component>/<rN>/<file>` route
-(path-validated against the payload's artifact list). Export mode inlines images as
-data URIs and table HTML directly — snapshots stay self-contained. `schemaVersion`
-bumps to 2.
+if present, and script snapshot text. Review amendments, all grounded in current
+code:
+
+- **Plan-less components must still be emitted.** `collect_payload()` currently
+  appends a group only `if versions or draft` — a retrofit component with only
+  `results/` would silently vanish. The condition gains `or results`.
+- **Payload hashes include results files.** Both `payload_files()` (board.py) and
+  `allFiles()` (parse.ts) add manifests, reports, verdicts, and script snapshots,
+  so annotation storage keys and staleness checks stay correct.
+- **Artifact route.** Live mode serves bytes via
+  `GET /artifact/<component>/<rN>/<file>`: requests are validated against the
+  payload's artifact list (no path math from user input), MIME types via the
+  `mimetypes` module, 404 for anything unknown — today's handler returns the board
+  HTML for every path, which would corrupt image loads.
+- **Focus.** `--focus` becomes result-aware (`<component>` or `<component>:rN`) so
+  capture can open the board directly on a new bundle.
+- Export mode inlines images as data URIs and table HTML directly — snapshots stay
+  self-contained. `schemaVersion` bumps (to the next free number after the
+  remote-review feature lands its own bump).
 
 ### Results view (fifth view)
 
@@ -192,9 +243,13 @@ bumps to 2.
   ✕ changes-requested, ● pending). Selecting a version renders the bundle page.
 - **Bundle page:** verdict banner (with Accept / Request changes buttons in live
   mode), rendered `report.md`, metric stat tiles, artifact gallery (figures as
-  images with captions, tables as rendered HTML in a horizontally scrolling
-  container, oversized placeholders), and a script drawer — each artifact's
-  "produced by" opens the highlighted snapshot.
+  images with captions, tables in a horizontally scrolling container, oversized
+  placeholders), and a script drawer — each artifact's "produced by" opens the
+  highlighted snapshot.
+- **Tables render through a narrow, sanitized path** (review amendment):
+  `Markdown.tsx` deliberately escapes raw HTML and stays that way. Captured table
+  HTML renders through a dedicated component that whitelists table tags/attributes
+  only; markdown-format tables render through the normal pipeline.
 - Retrofit bundles show a visible `retrofit` provenance chip.
 
 ### Annotations
@@ -224,15 +279,28 @@ Both are included in the "Send to Claude" feedback document with enough context
 (component, rN, artifact title or script lines) for the session to act without
 opening the board.
 
+UI mechanics (review amendment): the existing anchor machinery is
+`window.getSelection()`-based and cannot select an image or a stat tile. Figure
+cards and metric tiles therefore get an explicit "comment" affordance; text
+selection still works for report passages (reusing `anchor.ts`) and script comments
+use line-range selection in the script drawer, rendered by a line-based component,
+not the quote anchorer.
+
 ### Verdict flow (live mode)
 
-Accept / Request changes POST back alongside annotations. The session then:
+`board.py` stays a messenger (review amendment): it never mutates plan or results
+files itself, exactly as today. The verdict POST produces a structured **action
+block** in the feedback document (alongside any annotations), and the *session*
+then applies it via `results.py verdict`:
 
 - **Accept:** create `verdict.json` (`status: accepted`), append a decision-log
   entry, update the tracker row to `done (verified)`.
 - **Request changes:** create `verdict.json` (`status: changes-requested`), append
   the comments to the decision log, act on the feedback (fix scripts, re-run),
   and capture the fix as the next `r` version with `trigger: "redo-after-review"`.
+
+`commands/board.md` is updated to teach the session this routing (it currently
+covers only plan comments and general comments).
 
 The `TrackerStatus` parser gains `done (verified)`. Static exports render verdicts
 read-only and disable the buttons (as annotation already is in snapshots).
@@ -257,30 +325,41 @@ anchoring internals, and all four existing views beyond the cross-links above.
 
 ## Testing
 
+- New `tests/test_results.py`: `results.py` discover/stage/finalize/verdict —
+  staging resume, atomic rename, next-`rN` computation, size cap, checksum
+  validation, self-adoption exclusion.
 - `tests/test_board.py`: payload collection over results fixtures (bundles with
-  verdicts, pending, oversized artifacts, retrofit, no-plan components); artifact
-  route path-validation; export inlining.
-- Gate tests: deny edit/overwrite inside existing `r*/`; allow next-`rN` creation;
-  allow one-time `verdict.json` creation, deny its edit.
+  verdicts, pending, oversized artifacts, retrofit, **no-plan components**);
+  artifact route path-validation + 404s; export inlining; payload hash includes
+  results files.
+- Gate tests: deny edit/overwrite inside finalized `r*/`; staging dir writes pass;
+  allow one-time `verdict.json` creation, deny its edit; results branch never
+  blocks on the browser.
 - `board/src/lib/parse.test.ts`: manifest and verdict parsing, `done (verified)`
-  tracker status.
+  tracker status, sanitized table rendering.
 - `board/src/dev-data.ts`: extended with sample bundles for `npm run dev`.
 - Headless pressure test for `/research-plans:results` in a scratch repo
   (verify-on-disk before the command reports success).
 
 ## Implementation phasing
 
-1. **Data model + capture.** Manifest/verdict schemas, `/results` command
-   (including `--adopt`), gate extension, tests.
-2. **Board.** Payload + artifact route, Results view, annotations, verdict flow,
-   cross-links, export inlining.
+1. **Mechanics + capture.** `results.py` (discover/stage/finalize/verdict),
+   manifest/verdict schemas, `/results` command (including `--adopt`), gate
+   extension, tests.
+2. **Board.** Payload (incl. plan-less components + hashing) + artifact route,
+   Results view, annotations, verdict action block, cross-links, export inlining.
 3. **Integration.** `/sync` step, `/status` awareness of unverified done
-   components, README/QUICKSTART/CHANGELOG.
+   components, `commands/board.md` verdict routing, README/QUICKSTART/SKILL/
+   CHANGELOG, plugin.json → 0.6.0.
 
 ## Out of scope (this release)
 
 - Verdict gating (blocking tracker writes on unverified results).
 - Diffing two result versions (image diff, table diff) — future candidate.
 - Large-artifact storage (git-lfs, external stores); the size cap is the answer
-  for now.
+  for now. Bundles are committed by default — they are the record.
+- Zip-based export for image-heavy projects (Gemini review suggestion); data-URI
+  inlining under the 5 MB cap is acceptable for now, revisit if exports get heavy.
+- Special handling for PDFs or interactive HTML figures (Plotly/Bokeh); they are
+  captured as files, shown as download cards, not rendered inline.
 - Multi-reviewer verdicts; verdicts are single-researcher, like sign-off.
