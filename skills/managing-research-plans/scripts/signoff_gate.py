@@ -25,6 +25,7 @@ import uuid
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^v(\d+)\.md$")
+RESULTS_RE = re.compile(r"/plans/execution/([^/]+)/results/(r\d+)/")
 MASTER_MARKER = "<!-- research-plans:master-plan -->"
 CLAUDE_MARKER = "<!-- research-plans:start -->"
 DEFAULT_TIMEOUT = 1500
@@ -105,6 +106,46 @@ def main():
     if not p.is_absolute():
         p = Path(cwd) / p
     p = Path(os.path.realpath(str(p)))
+
+    # ---- Results-bundle immutability (synchronous file policy; NEVER opens
+    # the board — a browser gate here would deadlock capture). ----
+    res_m = RESULTS_RE.search(str(p))
+    if res_m:
+        if os.environ.get("RESEARCH_PLANS_NO_GATE", "") == "1":
+            print(
+                "research-plans: results immutability bypassed by "
+                "RESEARCH_PLANS_NO_GATE for %s" % p.name,
+                file=sys.stderr,
+            )
+            sys.exit(0)
+        if find_project_root(p) is None:
+            sys.exit(0)
+        bundle_dir = Path(str(p)[: res_m.end()].rstrip("/"))
+        if p.name == "verdict.json" and p.parent == bundle_dir:
+            if tool_name == "Write" and not p.exists():
+                allow(
+                    "One-time verdict for %s %s. Prefer results.py verdict "
+                    "(it stamps date and reviewer)." % (res_m.group(1), res_m.group(2))
+                )
+            deny(
+                "verdict.json is written once and never edited. The verdict for "
+                "%s %s is already recorded; a redo is a NEW bundle (results.py "
+                "stage/finalize), not an edit." % (res_m.group(1), res_m.group(2))
+            )
+        if bundle_dir.is_dir():
+            deny(
+                "Finalized results bundles are immutable — %s %s already exists. "
+                "Capture a new bundle instead: results.py stage --component %s, "
+                "copy artifacts, write manifest.json and report.md in the staging "
+                "dir, then results.py finalize."
+                % (res_m.group(1), res_m.group(2), res_m.group(1))
+            )
+        deny(
+            "Results bundles are created by results.py finalize (staging, "
+            "validation, atomic rename), never by direct writes into %s. Use "
+            "results.py stage --component %s and write into the .staging-* dir."
+            % (res_m.group(2), res_m.group(1))
+        )
 
     m = VERSION_RE.fullmatch(p.name)
     if (
