@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFeedbackDocument,
+  buildFeedbackMarkdown,
   feedbackFilename,
   newSessionId,
   sanitizeForFilename,
+  VIEW_LABEL,
   type FeedbackMeta,
 } from "./feedback";
+import type { Annotation, VerdictRequest } from "./types";
 
 const meta: FeedbackMeta = {
   sessionId: "abcdef12-3456-7890-abcd-ef1234567890",
@@ -56,5 +59,67 @@ describe("feedbackFilename", () => {
 describe("newSessionId", () => {
   it("returns a uuid or 32-hex fallback", () => {
     expect(newSessionId()).toMatch(/^[0-9a-f-]{32,36}$/);
+  });
+});
+
+describe("buildFeedbackMarkdown", () => {
+  const docComment: Annotation = {
+    id: "a1", type: "doc-comment", view: "tracker", docKey: "tracker",
+    scope: "row:3", quote: "Platform reach", prefix: "", suffix: "",
+    sectionHeading: "row 3: Platform reach", occurrenceIndex: 0,
+    anchored: true, comment: "status is wrong",
+  };
+  const planComment: Annotation = {
+    id: "a2", type: "plan-comment", planPath: "plans/execution/03-x/v2.md",
+    component: "03-x", version: 2, isDraft: false, quote: "the goal",
+    prefix: "", suffix: "", sectionHeading: "Goal", occurrenceIndex: 0,
+    anchored: true, comment: "tighten this",
+  };
+  const general: Annotation = {
+    id: "a3", type: "general", view: "Timeline", comment: "looks sparse",
+  };
+
+  it("returns the no-feedback stub when empty", () => {
+    expect(buildFeedbackMarkdown([], null)).toBe(
+      "# Board Feedback\n\nNo feedback.",
+    );
+  });
+
+  it("renders doc-comments with view label, section, and quote", () => {
+    const md = buildFeedbackMarkdown([docComment], null);
+    expect(md).toContain("## 1. [Tracker — row 3: Platform reach]");
+    expect(md).toContain('Feedback on: "Platform reach"');
+    expect(md).toContain("> status is wrong");
+  });
+
+  it("falls back to the bare view label when sectionHeading is empty", () => {
+    const md = buildFeedbackMarkdown(
+      [{ ...docComment, sectionHeading: "" } as Annotation],
+      null,
+    );
+    expect(md).toContain("## 1. [Tracker]");
+  });
+
+  it("keeps plan-comment and general formats unchanged", () => {
+    const md = buildFeedbackMarkdown([planComment, general], null);
+    expect(md).toContain("## 1. [03-x v2 — Goal]");
+    expect(md).toContain('Feedback on: "the goal"');
+    expect(md).toContain("## 2. [Timeline — general]");
+  });
+
+  it("renders the verdict block with the apply command", () => {
+    const verdict: VerdictRequest = {
+      component: "03-x", resultsVersion: 1,
+      status: "changes-requested", comment: "redo fig 2",
+    };
+    const md = buildFeedbackMarkdown([], verdict);
+    expect(md).toContain("## VERDICT: CHANGES-REQUESTED — 03-x r1");
+    expect(md).toContain("results.py verdict --component 03-x --version 1");
+  });
+
+  it("exposes display labels for every doc-comment view", () => {
+    expect(VIEW_LABEL.tracker).toBe("Tracker");
+    expect(VIEW_LABEL.timeline).toBe("Timeline");
+    expect(VIEW_LABEL.reviews).toBe("Reviews");
   });
 });

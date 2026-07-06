@@ -209,6 +209,22 @@ export interface PlanCommentAnnotation {
   prefix: string;
   suffix: string;
   sectionHeading: string;
+  scope?: string; // always "" on plans (no stamps); optional for stored legacy comments
+  occurrenceIndex: number;
+  anchored: boolean;
+  comment: string;
+}
+
+export interface DocCommentAnnotation {
+  id: string;
+  type: "doc-comment";
+  view: "tracker" | "timeline" | "reviews";
+  docKey: string; // "tracker" | "timeline" | review file payload path
+  scope: string; // data-annot-scope id, "" when selection was outside stamps
+  quote: string;
+  prefix: string;
+  suffix: string;
+  sectionHeading: string;
   occurrenceIndex: number;
   anchored: boolean;
   comment: string;
@@ -252,4 +268,5 @@ export type Annotation =
   | PlanCommentAnnotation
   | GeneralAnnotation
   | ResultCommentAnnotation
-  | ScriptCommentAnnotation;
+  | ScriptCommentAnnotation
+  | DocCommentAnnotation;

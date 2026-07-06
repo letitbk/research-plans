@@ -7,8 +7,10 @@ import Scorecard from "./views/Scorecard";
 import { allFiles, payloadContentHash } from "./lib/parse";
 import {
   buildFeedbackDocument,
+  buildFeedbackMarkdown,
   feedbackFilename,
   newSessionId,
+  VIEW_LABEL,
 } from "./lib/feedback";
 import type {
   Annotation,
@@ -483,6 +485,18 @@ export default function App({ data }: { data: BoardData }) {
                       {a.script.split("/").pop()} L{a.lineStart}
                       {a.lineEnd !== a.lineStart ? `–${a.lineEnd}` : ""}
                     </span>
+                  ) : a.type === "doc-comment" ? (
+                    <>
+                      <span className="font-medium text-stone-700">
+                        {VIEW_LABEL[a.view]}
+                      </span>
+                      {a.sectionHeading && <span>· {a.sectionHeading}</span>}
+                      {!a.anchored && (
+                        <span className="rounded bg-stone-100 px-1 py-0.5">
+                          unanchored
+                        </span>
+                      )}
+                    </>
                   ) : (
                     <span className="font-medium text-stone-700">
                       {a.view} — general
@@ -496,7 +510,7 @@ export default function App({ data }: { data: BoardData }) {
                     ✕
                   </button>
                 </div>
-                {a.type === "plan-comment" && (
+                {(a.type === "plan-comment" || a.type === "doc-comment") && (
                   <div className="mb-1 line-clamp-2 rounded bg-amber-50 px-1.5 py-1 text-[11px] italic text-stone-500">
                     “{a.quote}”
                   </div>
@@ -612,55 +626,3 @@ export default function App({ data }: { data: BoardData }) {
   );
 }
 
-function buildFeedbackMarkdown(
-  annotations: Annotation[],
-  verdict: VerdictRequest | null,
-): string {
-  if (annotations.length === 0 && !verdict)
-    return "# Board Feedback\n\nNo feedback.";
-  const lines: string[] = ["# Board Feedback", ""];
-  if (verdict) {
-    lines.push(
-      `## VERDICT: ${verdict.status.toUpperCase()} — ${verdict.component} r${verdict.resultsVersion}`,
-    );
-    if (verdict.comment) lines.push(`> ${verdict.comment}`);
-    lines.push(
-      "",
-      "Apply via: results.py verdict --component " +
-        `${verdict.component} --version ${verdict.resultsVersion} --status ${verdict.status}`,
-      "",
-    );
-  }
-  if (annotations.length > 0) {
-    lines.push(
-      `I've reviewed the board and have ${annotations.length} piece${annotations.length === 1 ? "" : "s"} of feedback:`,
-      "",
-    );
-  }
-  annotations.forEach((a, i) => {
-    if (a.type === "plan-comment") {
-      const head = `${a.component} v${a.version}${a.isDraft ? " (draft)" : ""}${a.sectionHeading ? ` — ${a.sectionHeading}` : ""}`;
-      lines.push(`## ${i + 1}. [${head}]`);
-      lines.push(`Feedback on: "${a.quote}"`);
-    } else if (a.type === "result-comment") {
-      const t =
-        a.target.kind === "artifact"
-          ? `artifact ${a.target.artifactId}`
-          : a.target.kind === "metric"
-            ? `metric ${a.target.metricLabel}`
-            : "report";
-      lines.push(`## ${i + 1}. [${a.component} r${a.resultsVersion} — ${t}]`);
-      if (a.target.quote) lines.push(`Feedback on: "${a.target.quote}"`);
-    } else if (a.type === "script-comment") {
-      lines.push(
-        `## ${i + 1}. [${a.component} r${a.resultsVersion} — ${a.script.split("/").pop()} lines ${a.lineStart}-${a.lineEnd}]`,
-      );
-      lines.push("```", a.excerpt, "```");
-    } else {
-      lines.push(`## ${i + 1}. [${a.view} — general]`);
-    }
-    for (const ln of a.comment.split("\n")) lines.push(`> ${ln}`);
-    lines.push("");
-  });
-  return lines.join("\n");
-}
