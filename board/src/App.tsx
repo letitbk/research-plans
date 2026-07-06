@@ -151,23 +151,37 @@ export default function App({ data }: { data: BoardData }) {
     setAnnotations((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const onPaintResult = useCallback((painted: Set<string>, docKey?: string) => {
-    setAnnotations((prev) => {
-      let changed = false;
-      const next = prev.map((a) => {
-        if (a.type !== "plan-comment") return a;
-        // A paint pass only covers ONE displayed document; comments on other
-        // documents (other plan versions, results reports) must not have
-        // their anchored flag clobbered by it.
-        if (docKey !== undefined && a.planPath !== docKey) return a;
-        const anchored = painted.has(a.id);
-        if (painted.size === 0 || a.anchored === anchored) return a;
-        changed = true;
-        return { ...a, anchored };
+  const onPaintResult = useCallback(
+    (painted: Set<string>, docKey?: string, scopeAbsent?: Set<string>) => {
+      setAnnotations((prev) => {
+        let changed = false;
+        const next = prev.map((a) => {
+          // A paint pass only covers ONE displayed document; comments on other
+          // documents (other plan versions, views, results reports) must not
+          // have their anchored flag clobbered by it.
+          if (a.type === "plan-comment") {
+            if (docKey !== undefined && a.planPath !== docKey) return a;
+            const anchored = painted.has(a.id);
+            if (painted.size === 0 || a.anchored === anchored) return a;
+            changed = true;
+            return { ...a, anchored };
+          }
+          if (a.type === "doc-comment") {
+            if (docKey !== undefined && a.docKey !== docKey) return a;
+            // Scope element hidden (e.g., timeline filter): not unanchored.
+            if (scopeAbsent?.has(a.id)) return a;
+            const anchored = painted.has(a.id);
+            if (a.anchored === anchored) return a;
+            changed = true;
+            return { ...a, anchored };
+          }
+          return a;
+        });
+        return changed ? next : prev;
       });
-      return changed ? next : prev;
-    });
-  }, []);
+    },
+    [],
+  );
 
   const feedbackMarkdown = useMemo(
     () => buildFeedbackMarkdown(annotations, pendingVerdict),

@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import { anchorFromSelection, paintHighlights } from "../lib/anchor";
-import type { PlanCommentAnnotation } from "../lib/types";
 
 interface Pending {
   x: number;
@@ -14,12 +13,26 @@ interface Pending {
   anchor: ReturnType<typeof anchorFromSelection>;
 }
 
-/** The minimal shape the paint pass needs; PlanCommentAnnotation and
- * report-targeted result comments are both structurally assignable. */
+/** The minimal shape the paint pass needs; plan comments, doc comments, and
+ * quote-carrying result comments are all structurally assignable. */
 export interface PaintableAnnotation {
   id: string;
   quote: string;
   occurrenceIndex: number;
+  scope?: string;
+}
+
+/** What a saved selection-comment hands back to the view: the anchor fields
+ * plus the comment text. Views spread in their own identity fields. */
+export interface AnchoredSelection {
+  quote: string;
+  prefix: string;
+  suffix: string;
+  sectionHeading: string;
+  scope: string;
+  occurrenceIndex: number;
+  anchored: boolean;
+  comment: string;
 }
 
 export default function AnnotationLayer({
@@ -31,10 +44,12 @@ export default function AnnotationLayer({
 }: {
   children: ReactNode;
   annotations: PaintableAnnotation[];
-  onAdd: (
-    a: Omit<PlanCommentAnnotation, "id" | "type" | "planPath" | "component" | "version" | "isDraft">,
+  onAdd: (a: AnchoredSelection) => void;
+  onPaintResult: (
+    paintedIds: Set<string>,
+    docKey: string,
+    scopeAbsent: Set<string>,
   ) => void;
-  onPaintResult: (paintedIds: Set<string>, docKey: string) => void;
   docKey: string; // changes when the displayed document changes
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,15 +62,16 @@ export default function AnnotationLayer({
     const el = containerRef.current;
     if (!el) return;
     const t = window.setTimeout(() => {
-      const painted = paintHighlights(
+      const outcome = paintHighlights(
         el,
         annotations.map((a) => ({
           id: a.id,
           quote: a.quote,
           occurrenceIndex: a.occurrenceIndex,
+          scope: a.scope,
         })),
       );
-      onPaintResult(painted, docKey);
+      onPaintResult(outcome.painted, docKey, outcome.scopeAbsent);
     }, 0);
     return () => window.clearTimeout(t);
   }, [annotations, docKey, onPaintResult]);
@@ -90,6 +106,7 @@ export default function AnnotationLayer({
       prefix: pending.anchor.prefix,
       suffix: pending.anchor.suffix,
       sectionHeading: pending.anchor.sectionHeading,
+      scope: pending.anchor.scope,
       occurrenceIndex: pending.anchor.occurrenceIndex,
       anchored: true,
       comment: text.trim(),

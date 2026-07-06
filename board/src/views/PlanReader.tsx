@@ -37,7 +37,11 @@ export default function PlanReader({
   onAddPlanComment: (
     a: Omit<PlanCommentAnnotation, "id" | "type">,
   ) => void;
-  onPaintResult: (paintedIds: Set<string>, docKey: string) => void;
+  onPaintResult: (
+    paintedIds: Set<string>,
+    docKey: string,
+    scopeAbsent: Set<string>,
+  ) => void;
   onOpenResults: (slug: string) => void;
 }) {
   const groups = data.files.executionPlans;

@@ -15,6 +15,7 @@ export interface SelectionAnchor {
   prefix: string;
   suffix: string;
   sectionHeading: string;
+  scope: string; // data-annot-scope of the stamped element, "" when unscoped
   occurrenceIndex: number;
 }
 
@@ -53,8 +54,30 @@ export function anchorFromSelection(
     cur = cur.parentElement;
   }
 
-  // Occurrence index + prefix/suffix within the container's full text.
-  const full = normalizeWs(container.textContent ?? "");
+  // Element stamps: nearest ancestor with data-annot-scope wins over the
+  // heading walk, and occurrence is counted within that element.
+  let scope = "";
+  let scopeEl: HTMLElement | null = null;
+  for (let e: Element | null = el; e && e !== container; e = e.parentElement) {
+    const s = (e as HTMLElement).dataset?.annotScope;
+    if (s !== undefined) {
+      scope = s;
+      scopeEl = e as HTMLElement;
+      const label = (e as HTMLElement).dataset?.annotSection;
+      if (label) sectionHeading = label;
+      break;
+    }
+  }
+
+  // Occurrence index + prefix/suffix within the scoped element's text (or the
+  // container's when unscoped, or when the selection spans outside the stamp).
+  let root: HTMLElement = scopeEl ?? container;
+  let full = normalizeWs(root.textContent ?? "");
+  if (scopeEl && !full.includes(quote)) {
+    scope = "";
+    root = container;
+    full = normalizeWs(container.textContent ?? "");
+  }
   const positions: number[] = [];
   let idx = full.indexOf(quote);
   while (idx !== -1) {
@@ -63,7 +86,7 @@ export function anchorFromSelection(
   }
   // Locate THIS selection by comparing preceding text length.
   const preRange = document.createRange();
-  preRange.selectNodeContents(container);
+  preRange.selectNodeContents(root);
   preRange.setEnd(range.startContainer, range.startOffset);
   const preLen = normalizeWs(preRange.toString()).length;
   let occurrenceIndex = 0;
@@ -81,23 +104,54 @@ export function anchorFromSelection(
   const suffix =
     pos >= 0 ? full.slice(pos + quote.length, pos + quote.length + CONTEXT_CHARS) : "";
 
-  return { quote, prefix, suffix, sectionHeading, occurrenceIndex };
+  return { quote, prefix, suffix, sectionHeading, scope, occurrenceIndex };
+}
+
+export interface PaintOutcome {
+  painted: Set<string>;
+  scopeAbsent: Set<string>; // anchors whose scope element is not in the DOM
 }
 
 /**
- * Paint highlights for anchors inside a rendered container.
- * Returns the ids it successfully anchored.
+ * Paint highlights for anchors inside a rendered container. Anchors with a
+ * scope are searched only inside matching [data-annot-scope] elements;
+ * scopeless anchors keep container-wide matching. Anchors whose scope element
+ * is absent (e.g., hidden by a filter) are reported, not treated as unanchored.
  */
 export function paintHighlights(
   container: HTMLElement,
-  anchors: { id: string; quote: string; occurrenceIndex: number }[],
-): Set<string> {
+  anchors: { id: string; quote: string; occurrenceIndex: number; scope?: string }[],
+): PaintOutcome {
   clearHighlights(container);
   const painted = new Set<string>();
+  const scopeAbsent = new Set<string>();
+  const scopeEls = new Map<string, HTMLElement[]>();
+  container.querySelectorAll<HTMLElement>("[data-annot-scope]").forEach((el) => {
+    const key = el.dataset.annotScope ?? "";
+    const list = scopeEls.get(key);
+    if (list) list.push(el);
+    else scopeEls.set(key, [el]);
+  });
   for (const a of anchors) {
-    if (paintOne(container, a)) painted.add(a.id);
+    if (a.scope) {
+      const els = scopeEls.get(a.scope);
+      if (!els) {
+        scopeAbsent.add(a.id);
+        continue;
+      }
+      // Duplicate scope ids are possible (twin timeline events); paint in the
+      // first element where the anchor resolves.
+      for (const el of els) {
+        if (paintOne(el, a)) {
+          painted.add(a.id);
+          break;
+        }
+      }
+    } else if (paintOne(container, a)) {
+      painted.add(a.id);
+    }
   }
-  return painted;
+  return { painted, scopeAbsent };
 }
 
 export function clearHighlights(container: HTMLElement): void {

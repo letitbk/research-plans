@@ -57,7 +57,11 @@ export default function Results({
   annotations: Annotation[];
   onAddResultComment: (a: Omit<ResultCommentAnnotation, "id" | "type">) => void;
   onAddScriptComment: (a: Omit<ScriptCommentAnnotation, "id" | "type">) => void;
-  onPaintResult: (painted: Set<string>, docKey: string) => void;
+  onPaintResult: (
+    painted: Set<string>,
+    docKey: string,
+    scopeAbsent: Set<string>,
+  ) => void;
   onVerdict: (v: VerdictRequest) => void;
   focusResults: number | null;
 }) {
