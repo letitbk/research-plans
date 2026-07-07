@@ -21,6 +21,9 @@ Render the current state of the project and reconcile the master plan against re
    - `—` overuse: a soft warning when more than half the components are `—` while research questions exist — infrastructure should be the exception, not the norm;
    - components marked `done` whose latest results bundle (`plans/execution/<slug>/results/rN/`) is pending or has a `changes-requested` verdict — unverified done;
    - `done (verified)` components where `python3 ${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/scripts/results.py changed --component <NN-slug>` reports drifted sources — the verified results no longer match outputs on disk;
+   - components `done` / `done (verified)` / `in progress` whose Execution plan link is `—` — executed work carrying no plan record (a retrospective plan is pending; suggest `/research-plans:adopt`);
+   - an `in progress` component whose latest signed plan carries `Provenance: retrospective` — the retrospective plan documents past work but does not govern the work still resuming; suggest a prospective `v2` (`Supersedes: v1`);
+   - a `plans/history.md` entry dated on or after the master plan's `Initialized:` timestamp — misfiled: `history.md` is pre-adoption only, and a present-day decision belongs in the decision log;
    - leftover `results/.staging-*` directories (an interrupted capture — suggest resuming or removing).
 
 3. **One suggested next action.** End with a single concrete suggestion — the next `not started` component to plan, a stale component to sync, or a flagged drift to resolve — and which command does it. Mention `/research-plans:board` for the visual version of this report.

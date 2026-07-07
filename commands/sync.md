@@ -5,7 +5,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(python3:*), 
 
 Reconcile the plan artifacts with what actually happened. Skill context: `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/SKILL.md`. Requires an initialized project (`plans/master-plan.md` with its marker); if absent, say so and stop.
 
-1. **Gather the evidence.** What happened this session (your own context), plus `git log`/`git diff` since the last sync or plan commit, plus outputs on disk. **No-git fallback:** if this is not a git repository, rely on session context and files only, and say that git evidence was unavailable. **Adoption cutoff:** the master plan's `Initialized:` timestamp (git first-commit of master-plan.md when the line is absent) bounds everything below — work and decisions from before it are never loggable and never count as deviations, since no plan governed them. This matters especially when the workflow was adopted mid-session: only the post-adoption part of the session is in scope.
+1. **Gather the evidence.** What happened this session (your own context), plus `git log`/`git diff` since the last sync or plan commit, plus outputs on disk. **No-git fallback:** if this is not a git repository, rely on session context and files only, and say that git evidence was unavailable. **Adoption cutoff:** the master plan's `Initialized:` timestamp (git first-commit of master-plan.md when the line is absent) bounds everything below — work and decisions from before it are never loggable in the decision log and never count as deviations, since no plan governed them (pre-adoption decisions are recordable instead in `plans/history.md` — a reconstructed record, not the real-time log — via `/research-plans:adopt`). This matters especially when the workflow was adopted mid-session: only the post-adoption part of the session is in scope.
 
 2. **Compare against the plan.** Read the latest `vN.md` for each component touched. Classify what happened: within plan / minor divergence / material deviation (a Scope decision changed, a build step was replaced, verification differed, new work outside Out of scope).
 
@@ -15,7 +15,7 @@ Reconcile the plan artifacts with what actually happened. Skill context: `${CLAU
 
    `## 2026-07-02 16:40 (late-captured at sync)`
 
-   Entries keep the standard Context / Question / Response / Effect format. Never write a late capture as if it had been logged in real time, and never touch existing entries. Decisions from *earlier* sessions stay unlogged — note the gap to the researcher instead of backfilling it.
+   Entries keep the standard Context / Question / Response / Effect format. Never write a late capture as if it had been logged in real time, and never touch existing entries. Decisions from *earlier* sessions within the governed period stay unlogged — note the gap to the researcher instead of backfilling it. A missed decision that predates the `Initialized:` cutoff is not a log gap at all: offer to record it in `plans/history.md` (`/research-plans:adopt`'s history pass) — a reconstructed record with date-granularity and cited evidence, never a backdated log entry.
 
 5. **Split flag.** If execution revealed the component has become multi-component (per `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/references/split-criteria.md`), say so and propose the split as tracker rows.
 

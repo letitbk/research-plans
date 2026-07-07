@@ -42,7 +42,11 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 ## Conventions
 
 - **Versions are immutable — and mechanically enforced.** `v1.md, v2.md, ...` are never overwritten or edited; the plugin's sign-off gate (a PreToolUse hook) blocks edits to signed versions and opens a browser approval for every new version write. Approval happens on the board, not in the terminal. If the gate denies, read `plans/.board-feedback.md`, revise, and write again. Headless/CI sessions set `RESEARCH_PLANS_NO_GATE=1` (the bypass leaves a stderr trace). Deviations are recorded, never hidden — especially the improvised ones.
-- **The log is append-only and real-time.** Never backfill at the end of a session. Late captures happen only via `/research-plans:sync` and carry the `(late-captured at sync)` label.
+- **The log is append-only and real-time.** Never backfill at the end of a session. Late captures happen only via `/research-plans:sync` and carry the `(late-captured at sync)` label. Pre-adoption decisions go in `plans/history.md`, never the log.
+- **Plan provenance (v0.3).** A plan is prospective by default. Work adopted after it was done gets a full plan carrying `Provenance: retrospective — covers <range>` plus a `Sources` section — an honest label, not a lesser plan, judged by every rubric check. Undeclared retrospection (a methods section passed off as prospective) fails the threshold; a declared, evidence-cited retrospective plan passes. `/research-plans:adopt` drafts these in bulk and reviews them in one board batch.
+- **Numbers are stable identifiers.** A component's `#` and slug are assigned once and never change, move, or get reused — the execution plan and any finalized results bundle are addressed by that slug forever. Work sequence is the **table row order**; reorder rows, never renumber. A late-adopted component shows its true place by moving its row.
+- **Pre-adoption history is a record, not the log.** Decisions predating `Initialized:` go in `plans/history.md`: reconstructed, evidence-cited, date-granularity, appendable anytime but scoped strictly to pre-adoption events. The decision log stays real-time; `history.md` never fabricates a clock time.
+- **Retrospective work is retrofit, never planned.** A results bundle backfilled under a retrospective plan is `provenance: retrofit` (the plan links it via `planVersion` without claiming to have governed it). Stamping `planned` is the results-layer version of undeclared retrospection — and it is permanent.
 - **The master plan stays light.** One line of outcome per component; detail lives in execution plans and the log. Do not let sync bloat it.
 - **The plan is not a preregistration — it is a contract with a built-in amendment process.** A recorded revision is an amendment: legitimate, expected. A silent deviation is a breach. Preregistration freezes the contract; this workflow keeps it amendable and treats only undisclosed change as deviation.
 - **Researcher signs.** Every execution plan version ends with a sign-off line. Jointly produced, but committed by the researcher.
@@ -56,6 +60,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | Master plan | `plans/master-plan.md` | Tracker + context; one-line outcomes |
 | Execution plans | `plans/execution/<NN-slug>/vN.md` | One component each; versions immutable |
 | Decision log | `plans/decision-log.md` | Append-only, timestamped, real-time |
+| Reconstructed history | `plans/history.md` | Pre-adoption record; date-granularity, evidence-cited; not the log |
 | Drafts | `plans/execution/<NN-slug>/.draft-vN.md` | Unsigned, mutable, gitignored; deleted on sign-off |
 | Results bundles | `plans/execution/<NN-slug>/results/rN/` | Immutable once finalized; verdict.json written once |
 | Results staging | `plans/execution/<NN-slug>/results/.staging-*/` | Mutable, gitignored; finalized via results.py |
@@ -65,6 +70,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | Command | Purpose |
 |---------|---------|
 | `/research-plans:init` | Opt a project in (creates the artifacts) |
+| `/research-plans:adopt` | Retrospectively decompose done work into components with retrospective plans; reconstruct pre-adoption history |
 | `/research-plans:plan` | Scope next component, author its execution plan |
 | `/research-plans:sync` | Post-execution checkpoint: tracker, log, revisions |
 | `/research-plans:results` | Capture a results bundle (report, artifacts, scripts, metrics); no argument = reconcile/backfill walk; `--adopt` for pre-existing outputs |
