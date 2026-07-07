@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.0 (2026-07-07)
+
+Adoption release — the plugin now works at any project stage, including after the fact.
+
+- **`/research-plans:adopt`**: retrospectively decompose already-done work into
+  components that each carry a full, honestly-labeled plan. Evidence scan →
+  proposed decomposition → bulk-drafted retrospective plans → one board batch to
+  approve them. Resumable; handles already-decomposed trackers, in-progress
+  components (retrospective v1 + prospective v2), and creates the execution dir
+  for every row.
+- **Plan provenance (rubric v0.3)**: a plan may declare `Provenance: retrospective
+  — covers <range>` with a `Sources` section. T8 is now provenance-aware — a
+  declared, evidence-cited retrospective plan passes; *undeclared* retrospection
+  (a methods section passed off as prospective) fails, and the adoption-cutoff
+  no longer shields it. `/review` resolves the Sources; the board shows a
+  provenance chip; retrospective work captures as `retrofit`, never `planned`
+  (reconcile routing fixed — a 4-reviewer finding).
+- **Hardened batch sign-off** (`board.py --gate-batch`): review many drafted
+  plans in one one-at-a-time session; each approval writes its ticket
+  immediately, so an interrupted session keeps prior approvals. Tickets are
+  hashed sign-off-trailer-invariantly (draft ↔ signed match), forgery-guarded
+  (the gate denies agent writes to `.import-approved-*`), not deleted on consume,
+  fast-deny + 7-day TTL, slug-version-named.
+- **Reconstructed history** (`plans/history.md`): pre-adoption decisions recorded
+  as an evidence-cited, date-granularity record — appendable anytime, scoped to
+  pre-`Initialized` events, kept out of the append-only decision log. Renders as
+  distinct dashed "reconstructed" cards on the board Timeline; withheld from
+  focused shares.
+- **Numbers are stable identifiers**: `#` is assigned once and never changes or
+  moves; work sequence is the table row order (reorder rows, never renumber), so
+  finalized bundles never move. No renumber tool by design.
+- Design + review: brainstormed with the researcher, two cross-model reviews
+  (Codex GPT-5.5, Gemini 3.1 Pro), and an 8-dimension multi-agent ultrareview;
+  ~40 findings folded in or resolved.
+
 ## 0.6.4 (2026-07-06)
 
 - **Finding-centric results bundles**: the board's Results view now embeds each

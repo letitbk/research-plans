@@ -24,6 +24,7 @@ Then restart Claude Code. See [QUICKSTART.md](QUICKSTART.md) for a walkthrough.
 | Command | What it does |
 |---------|--------------|
 | `/research-plans:init` | Opt a project in. Interview, seed the components list, create the artifacts. |
+| `/research-plans:adopt` | Retrospectively decompose already-done work into components, each with a full retrospective plan (reviewed in one board batch); reconstruct pre-adoption history. |
 | `/research-plans:plan` | Scope the next component and co-author its execution plan. |
 | `/research-plans:sync` | Post-execution checkpoint. Update the tracker, catch unlogged decisions, version the plan if execution deviated. |
 | `/research-plans:review` | Two-stage review: first a pass/fail threshold (is this a plan at all: goal and success criteria, reasoned scope decisions, executable steps, a named verification plan, prospectivity, recorded revisions), then a quality grade if it passes. Always includes a split assessment. |
