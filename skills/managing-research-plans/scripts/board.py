@@ -128,6 +128,8 @@ def payload_files(payload):
                 out.append(b["verdictRaw"])
             out.extend(b.get("scripts", []))
     out.extend(f["reviews"])
+    if f.get("history"):
+        out.append(f["history"])
     return out
 
 
@@ -294,6 +296,13 @@ def collect_payload(root, mode, focus):
         if (plans / "decision-log.md").is_file()
         else {"path": "plans/decision-log.md", "content": "# Decision Log\n"}
     )
+    # Reconstructed pre-adoption history — present only when the project has one,
+    # so a project without it keeps a byte-identical payload/share hash.
+    history = (
+        read_file(root, "plans/history.md")
+        if (plans / "history.md").is_file()
+        else None
+    )
 
     if mode == "remote" and focus:
         exec_groups = [g for g in exec_groups if g["component"] == focus]
@@ -304,12 +313,21 @@ def collect_payload(root, mode, focus):
             "path": "plans/decision-log.md",
             "content": "# Decision Log\n\n(omitted from focused share)\n",
         }
+        # history is whole-project material — withhold it from a focused share,
+        # exactly like the decision log.
+        if history is not None:
+            history = {
+                "path": "plans/history.md",
+                "content": "# Reconstructed History\n\n(omitted from focused share)\n",
+            }
 
     all_paths = ["plans/master-plan.md", "plans/decision-log.md"]
     for g in exec_groups:
         all_paths.extend(v["path"] for v in g["versions"])
         all_paths.extend(b["manifestRaw"]["path"] for b in g.get("results", []))
     all_paths.extend(r["path"] for r in reviews)
+    if history is not None:
+        all_paths.append("plans/history.md")
 
     payload = {
         "schemaVersion": 2,
@@ -323,6 +341,7 @@ def collect_payload(root, mode, focus):
             "decisionLog": decision_log,
             "executionPlans": exec_groups,
             "reviews": reviews,
+            **({"history": history} if history is not None else {}),
         },
     }
     if mode == "live":

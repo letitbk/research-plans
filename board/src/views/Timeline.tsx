@@ -7,11 +7,12 @@ import AnnotationLayer, {
 import {
   parseDecisionLog,
   parseExecutionPlan,
+  parseHistory,
   parseScorecard,
 } from "../lib/parse";
 import type { Annotation, BoardData, DocCommentAnnotation } from "../lib/types";
 
-type EventKind = "decision" | "plan" | "result" | "review";
+type EventKind = "decision" | "plan" | "result" | "review" | "reconstructed";
 
 interface TimelineEvent {
   kind: EventKind;
@@ -27,6 +28,9 @@ const KIND_STYLE: Record<EventKind, { dot: string; label: string }> = {
   plan: { dot: "bg-stone-800", label: "Plan version" },
   result: { dot: "bg-emerald-500", label: "Results" },
   review: { dot: "bg-purple-500", label: "Review" },
+  // Reconstructed pre-adoption history: hollow amber dot, dashed card — a record,
+  // not a real-time log entry, and visibly so.
+  reconstructed: { dot: "border-2 border-amber-400 bg-white", label: "Reconstructed (pre-adoption)" },
 };
 
 export default function Timeline({
@@ -106,7 +110,11 @@ export default function Timeline({
                     className={`absolute -left-[31px] top-1.5 h-2.5 w-2.5 rounded-full ${KIND_STYLE[e.kind].dot}`}
                   />
                   <div
-                    className="rounded-lg border border-stone-200 bg-white p-3"
+                    className={`rounded-lg border p-3 ${
+                      e.kind === "reconstructed"
+                        ? "border-dashed border-amber-300 bg-amber-50/40"
+                        : "border-stone-200 bg-white"
+                    }`}
                     data-annot-scope={`evt:${e.kind}:${e.sortKey}:${e.title}`}
                     data-annot-section={`${KIND_STYLE[e.kind].label} ${e.sortKey.replace(/ 00:00$/, "")}${e.title ? ` — ${e.title}` : ""}`}
                   >
@@ -155,6 +163,22 @@ export default function Timeline({
 
 function buildEvents(data: BoardData): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+
+  // Reconstructed pre-adoption history (present only when the project has a
+  // history.md). Date-granularity, so it sorts (oldest) to the bottom, before
+  // the real-time log — a visibly distinct prelude, never mixed in as fact.
+  if (data.files.history) {
+    for (const h of parseHistory(data.files.history.content)) {
+      events.push({
+        kind: "reconstructed",
+        sortKey: `${h.sortKey} 00:00`,
+        title: h.title,
+        badge: "reconstructed",
+        body: h.raw,
+        searchText: `${h.title} ${h.raw}`,
+      });
+    }
+  }
 
   for (const entry of parseDecisionLog(data.files.decisionLog.content)) {
     events.push({

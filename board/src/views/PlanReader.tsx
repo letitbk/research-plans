@@ -239,6 +239,17 @@ export default function PlanReader({
           </div>
         )}
 
+        {parsed?.ok && parsed.provenance && (
+          <div className="mb-2">
+            <span
+              className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800"
+              title="Written after the work it documents — a declared, evidence-cited reconstruction, not a prospective plan."
+            >
+              Provenance: {parsed.provenance}
+            </span>
+          </div>
+        )}
+
         {parsed?.ok &&
           parsed.serves &&
           (() => {

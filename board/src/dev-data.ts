@@ -146,6 +146,7 @@ Signed off: Jane Doe, 2026-07-01
 const descriptivesV1 = `# Descriptive Analysis — Execution Plan v1
 
 Component: \`03-descriptives\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-07-02
+Provenance: retrospective — written 2026-07-02; covers work executed 2026-06
 
 ## Context
 
@@ -570,6 +571,23 @@ const descriptivesResults = [
   },
 ];
 
+const history = `<!-- research-plans:history -->
+# Reconstructed History (pre-adoption)
+
+Reconstructed at adoption on 2026-07-02; covers 2026-05 – 2026-07-02 12:00.
+
+## 2026-05 — early dictionary + measurement pilots
+
+**Evidence:** commits a1b2c3d..e4f5a6b; \`~/.claude/plans/measurement-pilot.md\`
+**Decision / turn:** keyword-first measurement, LLM validation deferred to a later wave.
+**Uncertain:** the exact date the v0.1 dictionary was abandoned.
+
+## 2026-06 — cross-source frame assembled
+
+**Evidence:** commit 7c8d9e0; \`docs/plans/cross-source.md\`
+**Decision / turn:** LinkUp adopted as the primary levels source; CoreSignal kept for the causal panel.
+`;
+
 export const devData: BoardData = {
   schemaVersion: 1,
   generatedAt: "2026-07-02T12:00:00-04:00",
@@ -621,5 +639,6 @@ export const devData: BoardData = {
       { path: "plans/reviews/03-descriptives-v1.md", content: reviewV2Pass },
       { path: "plans/reviews/04-regression-v1.md", content: reviewV2Fail },
     ],
+    history: { path: "plans/history.md", content: history },
   },
 };

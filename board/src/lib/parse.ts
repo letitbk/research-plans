@@ -5,6 +5,7 @@
 
 import type {
   ParsedExecutionPlan,
+  ParsedHistoryEntry,
   ParsedLogEntry,
   ParsedMasterPlan,
   ResearchQuestion,
@@ -171,6 +172,29 @@ export function parseDecisionLog(raw: string): ParsedLogEntry[] {
   return entries;
 }
 
+// Reconstructed pre-adoption history. Headers are DATE-granularity (YYYY-MM or
+// YYYY-MM-DD, never a clock time — the decision-log regex requires HH:MM, so the
+// two never cross-parse). Month headers sort as the first of the month.
+export function parseHistory(raw: string): ParsedHistoryEntry[] {
+  const entries: ParsedHistoryEntry[] = [];
+  const re = /^## (\d{4}-\d{2}(?:-\d{2})?)\s*[—–-]?\s*([^\n]*)$/gm;
+  const matches = [...raw.matchAll(re)];
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const start = m.index! + m[0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index! : raw.length;
+    const body = raw.slice(start, end).trim();
+    const fields: { label: string; text: string }[] = [];
+    const fieldRe = /\*\*([^*]+):\*\*\s*([\s\S]*?)(?=\n\*\*[^*]+:\*\*|$)/g;
+    for (const fm of body.matchAll(fieldRe)) {
+      fields.push({ label: fm[1].trim(), text: fm[2].trim() });
+    }
+    const sortKey = m[1].length === 7 ? `${m[1]}-01` : m[1];
+    entries.push({ date: m[1], sortKey, title: m[2].trim(), fields, raw: body });
+  }
+  return entries;
+}
+
 const EXEC_SECTIONS = [
   "Goal and success criteria",
   "Context",
@@ -189,6 +213,7 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
     version: null,
     componentSlug: null,
     date: null,
+    provenance: null,
     supersedes: null,
     goal: null,
     serves: null,
@@ -206,6 +231,9 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
     const componentSlug =
       /^Component:\s*`?([^`·\n]+)`?/m.exec(raw)?.[1]?.trim() ?? null;
     const date = /(?:^|·\s*)Date:\s*([0-9-]+)/m.exec(raw)?.[1] ?? null;
+    // Provenance: absent = prospective; "retrospective — covers <range>" otherwise.
+    const provenance =
+      /^Provenance:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
     const supersedes =
       /^Supersedes:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
     const signedOff =
@@ -227,6 +255,7 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
       version,
       componentSlug,
       date,
+      provenance,
       supersedes,
       goal,
       serves,
@@ -302,6 +331,7 @@ export function allFiles(data: {
       }[];
     }[];
     reviews: { path: string; content: string }[];
+    history?: { path: string; content: string };
   };
 }): { path: string; content: string }[] {
   const out = [data.files.masterPlan, data.files.decisionLog];
@@ -316,5 +346,7 @@ export function allFiles(data: {
     }
   }
   out.push(...data.files.reviews);
+  // Present-only: a project without history keeps a byte-identical hash.
+  if (data.files.history) out.push(data.files.history);
   return out;
 }

@@ -239,8 +239,17 @@ export default function Results({
             </span>
           )}
           {m?.provenance === "retrofit" && (
-            <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[11px] font-medium text-stone-700">
-              retrofit — produced outside a plan
+            <span
+              className="rounded bg-stone-200 px-1.5 py-0.5 text-[11px] font-medium text-stone-700"
+              title={
+                m.planVersion != null
+                  ? "Documented by a retrospective plan (written after the work), not prospectively governed."
+                  : "Produced outside any plan."
+              }
+            >
+              {m.planVersion != null
+                ? `retrofit — documented by a retrospective plan (v${m.planVersion})`
+                : "retrofit — produced outside a plan"}
             </span>
           )}
           {m?.late && (
@@ -314,7 +323,9 @@ export default function Results({
                 <summary className="cursor-pointer select-none text-stone-500">
                   How these were produced — captured {m.capturedAt}
                   {m.planVersion != null
-                    ? ` under plan v${m.planVersion}`
+                    ? m.provenance === "retrofit"
+                      ? ` · documented by retrospective plan v${m.planVersion}`
+                      : ` under plan v${m.planVersion}`
                     : " · no governing plan (retrofit)"}
                 </summary>
                 <div className="mt-2 space-y-2">

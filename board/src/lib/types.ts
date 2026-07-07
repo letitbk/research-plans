@@ -20,6 +20,7 @@ export interface BoardData {
     decisionLog: BoardFile;
     executionPlans: ExecutionPlanGroup[];
     reviews: BoardFile[];
+    history?: BoardFile; // reconstructed pre-adoption history; present only when it exists
   };
 }
 
@@ -164,12 +165,21 @@ export interface ParsedLogEntry {
   raw: string;
 }
 
+export interface ParsedHistoryEntry {
+  date: string; // YYYY-MM or YYYY-MM-DD (date-granularity; never a clock time)
+  sortKey: string; // YYYY-MM-DD (month → first of month) for ordering
+  title: string;
+  fields: { label: string; text: string }[];
+  raw: string;
+}
+
 export interface ParsedExecutionPlan {
   ok: boolean;
   title: string;
   version: number | null;
   componentSlug: string | null;
   date: string | null;
+  provenance: string | null; // "Provenance:" header; null = prospective
   supersedes: string | null;
   goal: string | null; // "Goal and success criteria" body; null in pre-v0.3 plans
   serves: string | null; // "Serves:" line inside the goal section

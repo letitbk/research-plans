@@ -9,6 +9,7 @@ import {
   allFiles,
   parseDecisionLog,
   parseExecutionPlan,
+  parseHistory,
   parseMasterPlan,
   parseScorecard,
   parseServes,
@@ -278,5 +279,58 @@ describe("results layer", () => {
     expect(paths).toContain("plans/execution/01-x/results/r1/report.md");
     expect(paths).toContain("plans/execution/01-x/results/r1/verdict.json");
     expect(paths).toContain("plans/execution/01-x/results/r1/scripts/a.R");
+  });
+});
+
+describe("history (v0.7): reconstructed pre-adoption record", () => {
+  it("parses date-granularity entries with fields", () => {
+    const entries = parseHistory(devData.files.history!.content);
+    expect(entries.length).toBe(2);
+    expect(entries[0].date).toMatch(/^\d{4}-\d{2}(-\d{2})?$/);
+    expect(entries[0].sortKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(
+      entries.some((e) => e.fields.some((f) => f.label === "Evidence")),
+    ).toBe(true);
+  });
+
+  it("does not cross-parse a month header as a decision-log entry", () => {
+    // the decision-log parser requires HH:MM; history headers never appear there
+    expect(parseDecisionLog(devData.files.history!.content)).toEqual([]);
+  });
+
+  it("literal history.md template parses without throwing", () => {
+    expect(() => parseHistory(read(join(TEMPLATES, "history.md")))).not.toThrow();
+  });
+});
+
+describe("plan provenance (v0.3)", () => {
+  it("a prospective plan (no Provenance line) has null provenance", () => {
+    const p = parseExecutionPlan(
+      "# X — Execution Plan v1\n\nComponent: `01-x` · Date: 2026-07-01\n\n" +
+        "## Goal and success criteria\n\nDo it.\n",
+    );
+    expect(p.provenance).toBeNull();
+  });
+
+  it("a declared retrospective plan surfaces its Provenance", () => {
+    const desc = devData.files.executionPlans.find(
+      (g) => g.component === "03-descriptives",
+    )!.versions[0];
+    expect(parseExecutionPlan(desc.content).provenance).toMatch(/^retrospective/i);
+  });
+});
+
+describe("allFiles present-only history (hash stability)", () => {
+  it("includes history when present, excludes it when absent, without perturbing other hashes", () => {
+    expect(allFiles(devData).map((f) => f.path)).toContain("plans/history.md");
+
+    const noHistory = { files: { ...devData.files, history: undefined } };
+    expect(allFiles(noHistory).map((f) => f.path)).not.toContain(
+      "plans/history.md",
+    );
+
+    // present-only: everything-but-history hashes identically either way
+    const a = allFiles(devData).filter((f) => f.path !== "plans/history.md");
+    expect(payloadContentHash(a)).toBe(payloadContentHash(allFiles(noHistory)));
   });
 });
