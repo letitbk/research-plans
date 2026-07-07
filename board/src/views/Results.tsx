@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Markdown from "../components/Markdown";
-import SafeTable from "../components/SafeTable";
+import ArtifactCard from "../components/ArtifactCard";
 import ScriptViewer from "../components/ScriptViewer";
 import AnnotationLayer, {
   type AnchoredSelection,
@@ -31,12 +31,13 @@ function verdictMark(b: ResultsBundle): string {
   return " ●";
 }
 
-function tableKind(art: ResultArtifact): "html" | "md" | "csv" {
-  const f = (art.file ?? "").toLowerCase();
-  if (f.endsWith(".html")) return "html";
-  if (f.endsWith(".md")) return "md";
-  return "csv";
-}
+const STATUS_CLS: Record<string, string> = {
+  robust: "border-green-200 bg-green-50 text-green-800",
+  marginal: "border-amber-200 bg-amber-50 text-amber-800",
+  descriptive: "border-sky-200 bg-sky-50 text-sky-800",
+  retracted: "border-red-200 bg-red-50 text-red-700",
+  superseded: "border-stone-200 bg-stone-100 text-stone-500",
+};
 
 export default function Results({
   data,
@@ -90,7 +91,16 @@ export default function Results({
 
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [verdictComment, setVerdictComment] = useState("");
+  const [zoom, setZoom] = useState<{ url: string; title: string } | null>(null);
   useEffect(() => setOpenScript(null), [bundle?.dir]);
+  useEffect(() => {
+    if (!zoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
 
   const bundleAnnotations = useMemo(
     () =>
@@ -347,129 +357,171 @@ export default function Results({
           })()}
 
         {(() => {
+          const findingMode = !!(
+            m &&
+            m.metrics.some(
+              (mt) =>
+                (mt.artifactIds && mt.artifactIds.length > 0) || mt.statement,
+            )
+          );
+          const referenced = new Set(
+            m ? m.metrics.flatMap((mt) => mt.artifactIds ?? []) : [],
+          );
+          const orphanArtifacts = m
+            ? m.artifacts.filter((a) => !referenced.has(a.id))
+            : [];
+          const onZoom = (url: string, title: string) => setZoom({ url, title });
           const bundleBody = (
             <>
-        {/* metrics */}
-        {m && m.metrics.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-3">
-            {m.metrics.map((metric) => (
-              <div
-                key={metric.label}
-                data-annot-scope={`metric:${metric.label}`}
-                data-annot-section={`metric ${metric.label}`}
-                className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-left"
-              >
-                <div className="text-[11px] uppercase tracking-wide text-stone-500">
-                  {metric.label}
-                </div>
-                <div className="text-lg font-bold text-stone-900">{metric.value}</div>
-                {metric.note && (
-                  <div className="text-[11px] text-stone-400">{metric.note}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* report */}
-        {bundle.report && (
-          <section
-            className="mb-4 rounded-lg border border-stone-200 bg-white p-5"
-            data-annot-scope="report"
-            data-annot-section="report"
-          >
-            <Markdown source={bundle.report.content} />
-          </section>
-        )}
-
-        {/* artifact gallery — or, when a bundle carries a report but no
-            reproducible figures/tables, the summary-only notice */}
-        {m && m.artifacts.length === 0 ? (
-          <div className="mb-4 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-600">
-            <div className="font-semibold text-stone-700">Summary only</div>
-            <p className="mt-1">
-              No figures or tables in this bundle. The report and metrics were
-              captured, but the analysis outputs could not be reproduced (common
-              for retrospective captures, where outputs were never saved to
-              files). If a producing script exists, re-run it and capture again;
-              otherwise run <code>/research-plans:results</code> and name the
-              output file paths directly.
-            </p>
-          </div>
-        ) : m ? (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {m.artifacts.map((art) => {
-              const basename = art.file ? art.file.split("/").pop()! : null;
-              const url = basename ? bundle.assets[basename] : null;
-              const scriptFile = art.producedBy
-                ? bundle.scripts.find((s) =>
-                    s.path.endsWith("/" + art.producedBy!.script),
-                  )
-                : null;
-              return (
-                <div
-                  key={art.id}
-                  data-annot-scope={`artifact:${art.id}`}
-                  data-annot-section={`artifact ${art.id}: ${art.title}`}
-                  className="rounded-lg border border-stone-200 bg-white p-4"
+              {/* report — overview */}
+              {bundle.report && (
+                <section
+                  className="mb-4 rounded-lg border border-stone-200 bg-white p-5"
+                  data-annot-scope="report"
+                  data-annot-section="report"
                 >
-                  <div className="mb-2 flex items-baseline gap-2">
-                    <span className="text-sm font-semibold text-stone-800">
-                      {art.title}
-                    </span>
-                    <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] uppercase text-stone-500">
-                      {art.kind}
-                    </span>
-                  </div>
-                  {art.source.oversized ? (
-                    <div className="rounded border border-dashed border-stone-300 p-6 text-center text-xs text-stone-500">
-                      Too large to snapshot (
-                      {Math.round(art.source.bytes / 1024 / 1024)} MB) — original
-                      at <code>{art.source.path}</code>
+                  <Markdown source={bundle.report.content} />
+                </section>
+              )}
+
+              {m && findingMode ? (
+                <>
+                  {/* findings — each key finding with its evidence embedded */}
+                  {m.metrics.map((metric) => {
+                    const arts = (metric.artifactIds ?? [])
+                      .map((id) => m.artifacts.find((a) => a.id === id))
+                      .filter((a): a is ResultArtifact => Boolean(a));
+                    return (
+                      <section
+                        key={metric.label}
+                        data-annot-scope={`metric:${metric.label}`}
+                        data-annot-section={`metric ${metric.label}`}
+                        className="mb-4 rounded-lg border border-stone-200 bg-white p-5"
+                      >
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          {metric.status && (
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                STATUS_CLS[metric.status] ??
+                                STATUS_CLS.descriptive
+                              }`}
+                            >
+                              {metric.status}
+                            </span>
+                          )}
+                          <span className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
+                            {metric.label}
+                          </span>
+                        </div>
+                        {metric.statement && (
+                          <p className="mb-1 font-serif text-lg leading-snug text-stone-900">
+                            {metric.statement}
+                          </p>
+                        )}
+                        <div className="text-base font-bold text-stone-900">
+                          {metric.value}
+                        </div>
+                        {metric.note && (
+                          <div className="mt-0.5 text-xs text-stone-400">
+                            {metric.note}
+                          </div>
+                        )}
+                        {arts.length > 0 && (
+                          <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            {arts.map((art) => (
+                              <ArtifactCard
+                                key={art.id}
+                                art={art}
+                                bundle={bundle}
+                                openScript={openScript}
+                                setOpenScript={setOpenScript}
+                                onZoom={onZoom}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+
+                  {orphanArtifacts.length > 0 && (
+                    <section className="mb-4">
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">
+                        Additional evidence
+                      </h3>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {orphanArtifacts.map((art) => (
+                          <ArtifactCard
+                            key={art.id}
+                            art={art}
+                            bundle={bundle}
+                            openScript={openScript}
+                            setOpenScript={setOpenScript}
+                            onZoom={onZoom}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* backward-compat: metric tiles + full gallery */}
+                  {m && m.metrics.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-3">
+                      {m.metrics.map((metric) => (
+                        <div
+                          key={metric.label}
+                          data-annot-scope={`metric:${metric.label}`}
+                          data-annot-section={`metric ${metric.label}`}
+                          className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-left"
+                        >
+                          <div className="text-[11px] uppercase tracking-wide text-stone-500">
+                            {metric.label}
+                          </div>
+                          <div className="text-lg font-bold text-stone-900">
+                            {metric.value}
+                          </div>
+                          {metric.note && (
+                            <div className="text-[11px] text-stone-400">
+                              {metric.note}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ) : art.kind === "table" && art.inlineText ? (
-                    <SafeTable content={art.inlineText} kind={tableKind(art)} />
-                  ) : art.kind === "figure" && url ? (
-                    <img
-                      src={url}
-                      alt={art.title}
-                      className="max-h-80 w-full rounded border border-stone-100 object-contain"
-                    />
-                  ) : url ? (
-                    <a
-                      href={url}
-                      download={basename ?? undefined}
-                      className="text-xs font-medium text-blue-700 underline"
-                    >
-                      download {basename}
-                    </a>
-                  ) : (
-                    <div className="text-xs text-stone-400">no snapshot file</div>
                   )}
-                  {art.caption && (
-                    <p className="mt-2 text-xs text-stone-500">{art.caption}</p>
-                  )}
-                  {art.producedBy && (
-                    <button
-                      className="mt-2 text-[11px] font-medium text-blue-700 underline disabled:text-stone-400 disabled:no-underline"
-                      disabled={!scriptFile}
-                      onClick={() =>
-                        setOpenScript(
-                          openScript === scriptFile?.path
-                            ? null
-                            : (scriptFile?.path ?? null),
-                        )
-                      }
-                    >
-                      ▸ produced by {art.producedBy.sourcePath}
-                      {scriptFile ? " (view snapshot)" : " (snapshot missing)"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+                  {m && m.artifacts.length === 0 ? (
+                    <div className="mb-4 rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-600">
+                      <div className="font-semibold text-stone-700">
+                        Summary only
+                      </div>
+                      <p className="mt-1">
+                        No figures or tables in this bundle. The report and
+                        metrics were captured, but the analysis outputs could not
+                        be reproduced (common for retrospective captures, where
+                        outputs were never saved to files). If a producing script
+                        exists, re-run it and capture again; otherwise run{" "}
+                        <code>/research-plans:results</code> and name the output
+                        file paths directly.
+                      </p>
+                    </div>
+                  ) : m ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {m.artifacts.map((art) => (
+                        <ArtifactCard
+                          key={art.id}
+                          art={art}
+                          bundle={bundle}
+                          openScript={openScript}
+                          setOpenScript={setOpenScript}
+                          onZoom={onZoom}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </>
           );
           return canAnnotate ? (
@@ -518,6 +570,21 @@ export default function Results({
               </section>
             );
           })()}
+
+        {zoom && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+            role="dialog"
+            aria-label={`Enlarged: ${zoom.title}`}
+            onClick={() => setZoom(null)}
+          >
+            <img
+              src={zoom.url}
+              alt={zoom.title}
+              className="max-h-full max-w-full rounded object-contain"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

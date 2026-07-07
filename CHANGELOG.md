@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.4 (2026-07-06)
+
+- **Finding-centric results bundles**: the board's Results view now embeds each
+  figure/table directly under the key finding it supports, instead of a separate
+  evidence gallery. Metrics gained optional `statement` (the claim sentence
+  shown as the finding headline), `status` (robust | marginal | descriptive |
+  retracted | superseded), and `artifactIds` (the artifacts embedded under that
+  finding). Artifacts referenced by no finding fall to an "Additional evidence"
+  section; bundles without the new fields keep the previous metric-tiles +
+  gallery layout (backward-compatible).
+- **Figure lightbox**: clicking a figure enlarges it (Esc or click to close).
+- **producedBy / source fix**: `results.py copy` now emits `source.path` (was
+  `src`) to match the board contract, so the "Sources and producing scripts"
+  list renders real paths. `validate_staged` now checks that metric `artifactIds`
+  resolve to real artifact ids and `status` is a valid value.
+
 ## 0.6.3 (2026-07-06)
 
 - **Reproducibility-first results capture**: when a component has runnable

@@ -59,7 +59,19 @@ export interface ResultsManifest {
   capturedAt: string;
   late?: boolean; // backfill: plan-governed work captured after the fact
   summary?: string;
-  metrics: { label: string; value: string; note?: string }[];
+  metrics: {
+    label: string;
+    value: string;
+    note?: string;
+    statement?: string; // finding-centric header: the claim sentence
+    status?:
+      | "robust"
+      | "marginal"
+      | "descriptive"
+      | "retracted"
+      | "superseded";
+    artifactIds?: string[]; // artifact ids embedded under this finding
+  }[];
   artifacts: ResultArtifact[];
 }
 

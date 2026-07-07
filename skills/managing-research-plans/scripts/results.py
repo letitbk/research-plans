@@ -151,7 +151,7 @@ def cmd_copy(root, args):
             die("source not found: %s" % src)
         size = sp.stat().st_size
         digest = sha256_file(sp)
-        rec = {"src": src, "sha256": digest, "bytes": size, "oversized": False}
+        rec = {"path": src, "sha256": digest, "bytes": size, "oversized": False}
         if args.into == "artifacts" and size > MAX_BYTES:
             rec["file"] = None
             rec["oversized"] = True
@@ -161,6 +161,9 @@ def cmd_copy(root, args):
             rec["file"] = "%s/%s" % (args.into, sp.name)
         records.append(rec)
     print(json.dumps(records, indent=1))
+
+
+_METRIC_STATUSES = {"robust", "marginal", "descriptive", "retracted", "superseded"}
 
 
 def validate_staged(staging):
@@ -191,6 +194,16 @@ def validate_staged(staging):
         pb = art.get("producedBy")
         if pb and pb.get("script") and not (staging / pb["script"]).is_file():
             return None, "script snapshot missing: %s" % pb["script"]
+    # metrics are findings: validate optional status enum + artifactId refs
+    art_ids = {a.get("id") for a in manifest["artifacts"]}
+    for mt in manifest.get("metrics", []):
+        st = mt.get("status")
+        if st is not None and st not in _METRIC_STATUSES:
+            return None, "metric %r has invalid status: %s" % (mt.get("label"), st)
+        for aid in mt.get("artifactIds") or []:
+            if aid not in art_ids:
+                return None, "metric %r references unknown artifactId: %s" % (
+                    mt.get("label"), aid)
     return manifest, None
 
 
