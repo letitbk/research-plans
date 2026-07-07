@@ -40,6 +40,7 @@ GITIGNORE_LINES = [
     "/board-share.html",
     "/execution/*/.draft-v*.md",
     "/execution/*/.gate-*.md",
+    "/execution/.import-approved-*",
     "/execution/*/results/.staging-*/",
 ]
 
