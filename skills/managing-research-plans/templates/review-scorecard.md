@@ -1,6 +1,7 @@
 # Review — <Component> v<N>
 
-Plan: [v<N>.md](../execution/<NN-slug>/v<N>.md) · Rubric: plan-rubric.md (v0.2) · Date: <YYYY-MM-DD>
+Plan: [v<N>.md](../execution/<NN-slug>/v<N>.md) · Rubric: plan-rubric.md (v0.3) · Date: <YYYY-MM-DD>
+Provenance: **<prospective | retrospective — covers \<range\>>** <!-- from the plan's Provenance header; stated in the verdict so a retrospective plan is never read as prospective -->
 Threshold: **PASS (9/9)** <!-- or: **UNDETERMINED — T8 unknown** or: **FAIL — T1, T4** -->
 Score: **<raw> / <applicable max> (<pct>%)** — <band>
 <!-- Omit the Score line entirely on FAIL or UNDETERMINED. -->
