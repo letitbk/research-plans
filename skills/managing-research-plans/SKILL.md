@@ -62,6 +62,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | Decision log | `plans/decision-log.md` | Append-only, timestamped, real-time |
 | Reconstructed history | `plans/history.md` | Pre-adoption record; date-granularity, evidence-cited; not the log |
 | Drafts | `plans/execution/<NN-slug>/.draft-vN.md` | Unsigned, mutable, gitignored; deleted on sign-off |
+| Draft iterations | `plans/execution/<NN-slug>/vN-draft-K.md` | Committed snapshot of each drafting round; kept on sign-off; immutable by convention, read-only on the board |
 | Results bundles | `plans/execution/<NN-slug>/results/rN/` | Immutable once finalized; verdict.json written once |
 | Results staging | `plans/execution/<NN-slug>/results/.staging-*/` | Mutable, gitignored; finalized via results.py |
 | Saved reviews | `plans/reviews/<NN-slug>-vN.md` | Rubric scorecards; prose and JSON fence agree |

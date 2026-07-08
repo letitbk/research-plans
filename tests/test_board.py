@@ -113,6 +113,10 @@ class TestShareHash(unittest.TestCase):
             "executionPlans": [{
                 "component": "01-x",
                 "versions": [{"path": "plans/execution/01-x/v1.md", "content": "v1"}],
+                "draftSnapshots": [
+                    {"path": "plans/execution/01-x/v1-draft-1.md", "content": "s1",
+                     "version": 1, "iteration": 1},
+                ],
                 "draft": {"path": "plans/execution/01-x/.draft-v2.md", "content": "d2"},
             }],
             "reviews": [{"path": "plans/reviews/r.md", "content": "r"}],
@@ -120,7 +124,9 @@ class TestShareHash(unittest.TestCase):
         paths = [f["path"] for f in board.payload_files(payload)]
         self.assertEqual(sorted(paths), sorted([
             "plans/master-plan.md", "plans/decision-log.md",
-            "plans/execution/01-x/v1.md", "plans/execution/01-x/.draft-v2.md",
+            "plans/execution/01-x/v1.md",
+            "plans/execution/01-x/v1-draft-1.md",
+            "plans/execution/01-x/.draft-v2.md",
             "plans/reviews/r.md",
         ]))
 
@@ -159,6 +165,31 @@ class TestRemotePayload(unittest.TestCase):
             self.assertNotIn("shareHash", payload)
             groups = {g["component"]: g for g in payload["files"]["executionPlans"]}
             self.assertNotIn("draft", groups["01-data-prep"])
+
+    def test_draft_snapshots_collected_in_all_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            comp = root / "plans" / "execution" / "01-data-prep"
+            (comp / "v1-draft-1.md").write_text("# v1 draft 1\n", encoding="utf-8")
+            (comp / "v1-draft-2.md").write_text("# v1 draft 2\n", encoding="utf-8")
+            # Committed snapshots ride in every mode (unlike the ephemeral draft,
+            # which static/export omit).
+            for mode in ("static", "remote", "live"):
+                payload = board.collect_payload(root, mode, None)
+                groups = {g["component"]: g for g in payload["files"]["executionPlans"]}
+                snaps = groups["01-data-prep"].get("draftSnapshots")
+                self.assertIsNotNone(snaps, "snapshots missing in %s mode" % mode)
+                self.assertEqual(
+                    [(s["version"], s["iteration"]) for s in snaps], [(1, 1), (1, 2)])
+                paths = [f["path"] for f in board.payload_files(payload)]
+                self.assertIn("plans/execution/01-data-prep/v1-draft-1.md", paths)
+            # The sign-off version regex ignores vN-draft-K names, so a snapshot
+            # never leaks into the signed versions list.
+            payload = board.collect_payload(root, "static", None)
+            groups = {g["component"]: g for g in payload["files"]["executionPlans"]}
+            vpaths = [v["path"] for v in groups["01-data-prep"]["versions"]]
+            self.assertNotIn("plans/execution/01-data-prep/v1-draft-1.md", vpaths)
 
 
 class TestShareCli(unittest.TestCase):

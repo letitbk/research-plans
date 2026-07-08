@@ -340,6 +340,7 @@ export function allFiles(data: {
     executionPlans: {
       versions: { path: string; content: string }[];
       draft?: { path: string; content: string };
+      draftSnapshots?: { path: string; content: string }[];
       results?: {
         manifestRaw: { path: string; content: string };
         report: { path: string; content: string } | null;
@@ -354,6 +355,7 @@ export function allFiles(data: {
   const out = [data.files.masterPlan, data.files.decisionLog];
   for (const g of data.files.executionPlans) {
     out.push(...g.versions);
+    out.push(...(g.draftSnapshots ?? []));
     if (g.draft) out.push(g.draft);
     for (const b of g.results ?? []) {
       out.push(b.manifestRaw);

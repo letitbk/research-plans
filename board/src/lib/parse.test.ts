@@ -352,3 +352,25 @@ describe("allFiles present-only history (hash stability)", () => {
     expect(payloadContentHash(a)).toBe(payloadContentHash(allFiles(noHistory)));
   });
 });
+
+describe("allFiles committed draft snapshots (feature #1)", () => {
+  it("includes vN-draft-K snapshots in the hashed file set", () => {
+    const paths = allFiles(devData).map((f) => f.path);
+    expect(paths).toContain("plans/execution/03-descriptives/v2-draft-1.md");
+    expect(paths).toContain("plans/execution/03-descriptives/v2-draft-2.md");
+  });
+
+  it("a group without snapshots contributes none, keeping other hashes stable", () => {
+    const stripped = {
+      files: {
+        ...devData.files,
+        executionPlans: devData.files.executionPlans.map((g) => ({
+          ...g,
+          draftSnapshots: undefined,
+        })),
+      },
+    };
+    const paths = allFiles(stripped).map((f) => f.path);
+    expect(paths.some((p) => /v\d+-draft-\d+\.md$/.test(p))).toBe(false);
+  });
+});

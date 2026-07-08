@@ -127,6 +127,7 @@ def payload_files(payload):
     out = [f["masterPlan"], f["decisionLog"]]
     for g in f["executionPlans"]:
         out.extend(g["versions"])
+        out.extend(g.get("draftSnapshots", []))
         if g.get("draft"):
             out.append(g["draft"])
         for b in g.get("results", []):
@@ -290,8 +291,29 @@ def collect_payload(root, mode, focus):
                         (versions[-1]["version"] + 1) if versions else 1
                     )
                     group["draft"] = entry
+            # Committed within-version draft iterations (feature #1). Unlike the
+            # ephemeral working draft above, these are real history and ride in
+            # every mode. Named vN-draft-K.md — never matched by the sign-off
+            # gate's version regex, so they stay plain committed files.
+            snapshots = []
+            for f in sorted(comp_dir.glob("v*-draft-*.md")):
+                m = re.fullmatch(r"v(\d+)-draft-(\d+)\.md", f.name)
+                if not m:
+                    continue
+                entry = read_file(root, str(f.relative_to(root)))
+                entry["version"] = int(m.group(1))
+                entry["iteration"] = int(m.group(2))
+                snapshots.append(entry)
+            snapshots.sort(key=lambda s: (s["version"], s["iteration"]))
+            if snapshots:
+                group["draftSnapshots"] = snapshots
             group["results"] = collect_results(root, comp_dir)
-            if versions or group.get("draft") or group["results"]:
+            if (
+                versions
+                or group.get("draft")
+                or group.get("draftSnapshots")
+                or group["results"]
+            ):
                 exec_groups.append(group)
 
     reviews = []
@@ -333,6 +355,7 @@ def collect_payload(root, mode, focus):
     all_paths = ["plans/master-plan.md", "plans/decision-log.md"]
     for g in exec_groups:
         all_paths.extend(v["path"] for v in g["versions"])
+        all_paths.extend(s["path"] for s in g.get("draftSnapshots", []))
         all_paths.extend(b["manifestRaw"]["path"] for b in g.get("results", []))
     all_paths.extend(r["path"] for r in reviews)
     if history is not None:

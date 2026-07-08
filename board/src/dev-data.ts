@@ -224,6 +224,88 @@ Totals cross-checked against cleaning log row counts.
 No models; no country-level covariates yet.
 `;
 
+// Committed within-version draft iterations (feature #1) — the path from the
+// first reaction to the reviewer through to the (still unsigned) working draft.
+const descriptivesSnap1 = `# Descriptive Analysis — Execution Plan v2
+
+Component: \`03-descriptives\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-07-02
+Supersedes: v1 — reviewer asked for item-level missingness table before means.
+
+## Goal and success criteria
+
+Serves: RQ1
+
+Describe cross-country variation in immigration support. Success: a per-country table (weighted and unweighted), cross-checked against the cleaning log row counts.
+
+## Context
+
+Describe the analysis sample: distribution of the support item by country and year, weighted and unweighted.
+
+## Scope decisions
+
+| Dimension | Decision | Why |
+|-----------|----------|-----|
+| Weights | ISSP design weights, shown alongside unweighted | Comparability with published CRI descriptives |
+
+## Approach
+
+Compute per-country summaries, export table + one figure.
+
+## Build steps
+
+1. Weighted and unweighted means by country
+2. Figure: country means with CIs
+
+## Verification
+
+Totals cross-checked against cleaning log row counts.
+
+## Out of scope
+
+No models; no country-level covariates yet.
+`;
+
+const descriptivesSnap2 = `# Descriptive Analysis — Execution Plan v2
+
+Component: \`03-descriptives\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-07-02
+Supersedes: v1 — reviewer asked for item-level missingness table before means.
+
+## Goal and success criteria
+
+Serves: RQ1
+
+Describe cross-country variation in immigration support with missingness reporting. Success: a per-country table plus a missingness table.
+
+## Context
+
+Describe the analysis sample: distribution of the support item by country and year, weighted and unweighted, plus item-level missingness.
+
+## Scope decisions
+
+| Dimension | Decision | Why |
+|-----------|----------|-----|
+| Weights | ISSP design weights, shown alongside unweighted | Comparability with published CRI descriptives |
+| Missingness | Item-level table by country | Reviewer request |
+
+## Approach
+
+Compute missingness table, then per-country summaries, export tables + one figure.
+
+## Build steps
+
+1. Item-level missingness by country
+2. Weighted and unweighted means by country
+3. Figure: country means with CIs
+
+## Verification
+
+Totals cross-checked against cleaning log row counts.
+
+## Out of scope
+
+No models; no country-level covariates yet.
+`;
+
 const review = `# Review — Data Cleaning v2
 
 Plan: [v2.md](../execution/02-data-cleaning/v2.md) · Rubric: plan-rubric.md (draft v0.1) · Date: 2026-07-02
@@ -629,6 +711,10 @@ export const devData: BoardData = {
         component: "03-descriptives",
         versions: [
           { version: 1, path: "plans/execution/03-descriptives/v1.md", content: descriptivesV1 },
+        ],
+        draftSnapshots: [
+          { version: 2, iteration: 1, path: "plans/execution/03-descriptives/v2-draft-1.md", content: descriptivesSnap1 },
+          { version: 2, iteration: 2, path: "plans/execution/03-descriptives/v2-draft-2.md", content: descriptivesSnap2 },
         ],
         draft: {
           proposedVersion: 2,

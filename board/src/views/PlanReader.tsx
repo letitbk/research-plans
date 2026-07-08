@@ -12,17 +12,29 @@ import {
 import type {
   Annotation,
   BoardData,
+  DraftSnapshotFile,
   ExecutionPlanGroup,
   PlanCommentAnnotation,
 } from "../lib/types";
 
+type DocKind = "signed" | "workingDraft" | "draftSnapshot";
+
 interface DocRef {
   group: ExecutionPlanGroup;
   version: number;
-  isDraft: boolean;
+  iteration?: number; // draftSnapshot only
+  docKind: DocKind;
+  isDraft: boolean; // convenience: docKind !== "signed"
   path: string;
   content: string;
 }
+
+const docLabel = (d: DocRef): string =>
+  d.docKind === "draftSnapshot"
+    ? `v${d.version}·d${d.iteration}`
+    : d.docKind === "workingDraft"
+      ? `proposed v${d.version}`
+      : `v${d.version}`;
 
 export default function PlanReader({
   data,
@@ -53,45 +65,87 @@ export default function PlanReader({
   const group =
     groups.find((g) => g.component === selectedComponent) ?? groups[0] ?? null;
 
+  // The full version history in chronological order: for each version number,
+  // its committed draft iterations (vN-draft-K) in order, then the signed vN (or
+  // the still-unsigned working draft). Reads idea → signed left to right.
   const docs: DocRef[] = useMemo(() => {
     if (!group) return [];
-    const out: DocRef[] = group.versions
-      .slice()
-      .sort((a, b) => a.version - b.version)
-      .map((v) => ({
-        group,
-        version: v.version,
-        isDraft: false,
-        path: v.path,
-        content: v.content,
-      }));
-    if (group.draft) {
+    const snapsByVersion = new Map<number, DraftSnapshotFile[]>();
+    for (const s of group.draftSnapshots ?? []) {
+      const list = snapsByVersion.get(s.version) ?? [];
+      list.push(s);
+      snapsByVersion.set(s.version, list);
+    }
+    const signedByVersion = new Map(group.versions.map((v) => [v.version, v]));
+    const draftVersion = group.draft?.proposedVersion ?? null;
+    const versionNums = [
+      ...new Set<number>([
+        ...group.versions.map((v) => v.version),
+        ...(group.draftSnapshots ?? []).map((s) => s.version),
+        ...(draftVersion !== null ? [draftVersion] : []),
+      ]),
+    ].sort((a, b) => a - b);
+
+    const out: DocRef[] = [];
+    let draftPushed = false;
+    const pushDraft = () => {
+      if (!group.draft) return;
       out.push({
         group,
         version: group.draft.proposedVersion,
+        docKind: "workingDraft",
         isDraft: true,
         path: group.draft.path,
         content: group.draft.content,
       });
+      draftPushed = true;
+    };
+    for (const n of versionNums) {
+      for (const s of (snapsByVersion.get(n) ?? [])
+        .slice()
+        .sort((a, b) => a.iteration - b.iteration)) {
+        out.push({
+          group,
+          version: n,
+          iteration: s.iteration,
+          docKind: "draftSnapshot",
+          isDraft: true,
+          path: s.path,
+          content: s.content,
+        });
+      }
+      const signed = signedByVersion.get(n);
+      if (signed) {
+        out.push({
+          group,
+          version: n,
+          docKind: "signed",
+          isDraft: false,
+          path: signed.path,
+          content: signed.content,
+        });
+      }
+      // The working draft shows at its proposedVersion when that version has no
+      // signed vN yet. If a signed vN already exists there, the draft is a stale
+      // leftover — still shown (appended at the end) so the stale banner can warn.
+      if (draftVersion === n && !signed) pushDraft();
     }
+    if (!draftPushed) pushDraft();
     return out;
   }, [group]);
 
   const [docIdx, setDocIdx] = useState(docs.length - 1);
   useEffect(() => setDocIdx(docs.length - 1), [group?.component, docs.length]);
-  const doc = docs[Math.min(docIdx, docs.length - 1)] ?? null;
+  const curIdx = Math.min(docIdx, docs.length - 1);
+  const doc = docs[curIdx] ?? null;
 
   // Part 2 (agent/technical half) collapse state; reset when the shown doc changes.
   const [agentOpen, setAgentOpen] = useState(false);
   useEffect(() => setAgentOpen(false), [doc?.path]);
 
-  const prevDoc = useMemo(() => {
-    if (!doc) return null;
-    const before = docs.filter(
-      (d) => !d.isDraft && (doc.isDraft ? true : d.version < doc.version),
-    );
-    return before.length > 0 ? before[before.length - 1] : null;
-  }, [doc, docs]);
+  // Diff base is the immediately preceding step in the version history (previous
+  // snapshot, signed version, or working draft) — reads the evolution in order.
+  const prevDoc = curIdx > 0 ? docs[curIdx - 1] : null;
 
   const [diffOn, setDiffOn] = useState(false);
   useEffect(() => {
@@ -140,8 +194,12 @@ export default function PlanReader({
   }
 
   const stale =
-    doc.isDraft &&
+    doc.docKind === "workingDraft" &&
     group.versions.some((v) => v.version >= (group.draft?.proposedVersion ?? 0));
+
+  // Snapshots (committed draft iterations) are read-only: viewed and diffed,
+  // never annotated. Feedback routing must not touch an immutable snapshot.
+  const annotatable = canAnnotate && doc.docKind !== "draftSnapshot";
 
   return (
     <div className="flex gap-5">
@@ -208,20 +266,24 @@ export default function PlanReader({
 
       {/* Main pane */}
       <div className="min-w-0 flex-1">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {docs.map((d, i) => (
-            <button
-              key={d.path}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                i === Math.min(docIdx, docs.length - 1)
-                  ? "border-stone-900 bg-stone-900 text-white"
-                  : "border-stone-300 bg-white text-stone-600 hover:border-stone-500"
-              } ${d.isDraft ? "border-dashed" : ""}`}
-              onClick={() => setDocIdx(i)}
-            >
-              {d.isDraft ? `proposed v${d.version} (draft)` : `v${d.version}`}
-            </button>
-          ))}
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          {docs.map((d, i) =>
+            d.docKind === "draftSnapshot" ? null : (
+              <button
+                key={d.path}
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  i === curIdx
+                    ? "border-stone-900 bg-stone-900 text-white"
+                    : "border-stone-300 bg-white text-stone-600 hover:border-stone-500"
+                } ${d.docKind === "workingDraft" ? "border-dashed" : ""}`}
+                onClick={() => setDocIdx(i)}
+              >
+                {d.docKind === "workingDraft"
+                  ? `proposed v${d.version} (draft)`
+                  : `v${d.version}`}
+              </button>
+            ),
+          )}
           {prevDoc && (
             <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
               <input
@@ -229,10 +291,34 @@ export default function PlanReader({
                 checked={diffOn}
                 onChange={(e) => setDiffOn(e.target.checked)}
               />
-              Diff vs v{prevDoc.version}
+              Diff vs {docLabel(prevDoc)}
             </label>
           )}
         </div>
+
+        {docs.some((d) => d.docKind === "draftSnapshot") && (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-stone-400">
+              iterations
+            </span>
+            {docs.map((d, i) =>
+              d.docKind !== "draftSnapshot" ? null : (
+                <button
+                  key={d.path}
+                  title="Committed draft iteration — read-only"
+                  className={`rounded border px-2 py-0.5 text-xs ${
+                    i === curIdx
+                      ? "border-stone-900 bg-stone-100 font-semibold text-stone-900"
+                      : "border-dashed border-stone-300 bg-white text-stone-500 hover:border-stone-500"
+                  }`}
+                  onClick={() => setDocIdx(i)}
+                >
+                  {docLabel(d)}
+                </button>
+              ),
+            )}
+          </div>
+        )}
 
         {(group.results ?? []).some(
           (b) => b.manifest?.planVersion === doc.version && !doc.isDraft,
@@ -258,7 +344,7 @@ export default function PlanReader({
           </div>
         )}
 
-        {doc.isDraft && (
+        {doc.docKind === "workingDraft" && (
           <div className="mb-3 flex items-center gap-2">
             <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
               Unsigned draft
@@ -268,6 +354,14 @@ export default function PlanReader({
                 Stale — a signed version already supersedes this draft
               </span>
             )}
+          </div>
+        )}
+
+        {doc.docKind === "draftSnapshot" && (
+          <div className="mb-3 flex items-center gap-2">
+            <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-stone-600">
+              Draft iteration {docLabel(doc)} · read-only
+            </span>
           </div>
         )}
 
@@ -326,7 +420,7 @@ export default function PlanReader({
             ref={scrollRef}
             className="rounded-lg border border-stone-200 bg-white p-6"
           >
-            {canAnnotate ? (
+            {annotatable ? (
               <AnnotationLayer
                 docKey={doc.path}
                 annotations={docAnnotations}
@@ -369,9 +463,15 @@ export default function PlanReader({
             )}
           </div>
         )}
-        {canAnnotate && (
+        {annotatable && (
           <p className="mt-2 text-xs text-stone-400">
             Select any text in the plan to attach a comment.
+          </p>
+        )}
+        {canAnnotate && doc.docKind === "draftSnapshot" && (
+          <p className="mt-2 text-xs text-stone-400">
+            Draft iterations are read-only history — open the signed version or
+            working draft to comment.
           </p>
         )}
       </div>
