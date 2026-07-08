@@ -684,6 +684,32 @@ export const devData: BoardData = {
     leftoverStaging: ["02-data-cleaning"],
     sourceDrift: ["03-descriptives"],
   },
+  // Agent plan review (v0.9): reviewer-produced comments, seeded as pending
+  // annotations. They paint on 02-data-cleaning v2 and carry a "via Subagent" badge.
+  seededAnnotations: [
+    {
+      planPath: "plans/execution/02-data-cleaning/v2.md",
+      component: "02-data-cleaning",
+      version: 2,
+      isDraft: false,
+      sectionHeading: "Goal and success criteria",
+      quote: "documented analysis sample",
+      comment:
+        "Define 'documented' concretely — which recodes and exclusions must be logged for this to count as done?",
+      author: "Subagent",
+    },
+    {
+      planPath: "plans/execution/02-data-cleaning/v2.md",
+      component: "02-data-cleaning",
+      version: 2,
+      isDraft: false,
+      sectionHeading: "Scope decisions",
+      quote: "Drop exact duplicates only",
+      comment:
+        "Partial-duplicate households are kept — is that defensible, or should near-duplicates at least be flagged?",
+      author: "Subagent",
+    },
+  ],
   project: { name: "issp-immigration-dev", root: "/dev/sample" },
   git: {
     available: true,
