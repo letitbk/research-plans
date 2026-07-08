@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.2 (2026-07-08)
+
+- **Relicensed from MIT to the PolyForm Noncommercial License 1.0.0.**
+  Research, teaching, personal, non-profit, educational, and government use
+  remain permitted; commercial use now requires a separate license. Versions
+  <= 0.9.1 were published under MIT and remain so under their original terms;
+  bundled third-party dependencies keep their own (MIT) notices.
+
 ## 0.9.1 (2026-07-08)
 
 - **Filesystem/git drift checks in the Tracker** (the last checks from the
