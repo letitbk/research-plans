@@ -6,6 +6,12 @@ export interface BoardData {
   mode: "live" | "static" | "remote";
   focus: string | null;
   focusResults?: number | null; // --focus slug:rN opens the Results view on rN
+  drift?: {
+    // filesystem/git hygiene flags (feature #7); researcher modes only
+    staleBoardHtml: boolean | null;
+    leftoverStaging: string[];
+    sourceDrift: string[];
+  };
   // agent plan review (v0.9): reviewer-produced comments injected via
   // board.py --seed-annotations; resolved to anchors in the browser on mount.
   seededAnnotations?: SeededAnnotation[];
