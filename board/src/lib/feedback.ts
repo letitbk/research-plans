@@ -63,7 +63,9 @@ export function buildFeedbackMarkdown(
     const t =
       reviewRequest.scope === "plan"
         ? `${reviewRequest.component} v${reviewRequest.version}${reviewRequest.isDraft ? " (draft)" : ""}`
-        : reviewRequest.scope;
+        : reviewRequest.scope === "results"
+          ? `${reviewRequest.component} r${reviewRequest.resultsVersion}`
+          : "master plan";
     lines.push(
       `## REVIEW REQUEST: ${reviewRequest.agent} on ${t}`,
       "",
@@ -104,7 +106,9 @@ export function buildFeedbackMarkdown(
             : a.target.kind === "metric"
               ? `metric ${a.target.metricLabel}`
               : "report";
-        lines.push(`## ${i + 1}. [${a.component} r${a.resultsVersion} — ${t}]`);
+        lines.push(
+          `## ${i + 1}. [${a.component} r${a.resultsVersion} — ${t}]${a.author ? ` (via ${a.author})` : ""}`,
+        );
         if (a.target.quote) lines.push(`Feedback on: "${a.target.quote}"`);
         break;
       }
@@ -117,7 +121,7 @@ export function buildFeedbackMarkdown(
       }
       case "doc-comment": {
         const head = `${VIEW_LABEL[a.view]}${a.sectionHeading ? ` — ${a.sectionHeading}` : ""}`;
-        lines.push(`## ${i + 1}. [${head}]`);
+        lines.push(`## ${i + 1}. [${head}]${a.author ? ` (via ${a.author})` : ""}`);
         lines.push(`Feedback on: "${a.quote}"`);
         break;
       }

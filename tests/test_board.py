@@ -568,6 +568,41 @@ class TestSeedAnnotations(unittest.TestCase):
             broken.write_text("{", encoding="utf-8")
             self.assertEqual(board.load_seed_annotations(str(broken)), [])
             self.assertEqual(board.load_seed_annotations(str(root / "nope.json")), [])
+            # scope-aware seeds (v0.9 Phase 4): master + results load alongside plan
+            multi = root / "multi.json"
+            multi.write_text(json.dumps([
+                {"scope": "plan", "planPath": "p", "component": "01-x",
+                 "version": 1, "isDraft": False, "sectionHeading": "s",
+                 "quote": "q", "comment": "c", "author": "Codex"},
+                {"scope": "master", "sectionHeading": "s", "quote": "q",
+                 "comment": "c", "author": "Gemini"},
+                {"scope": "results", "component": "01-x", "resultsVersion": 2,
+                 "sectionHeading": "s", "quote": "q", "comment": "c",
+                 "author": "Subagent"},
+            ]), encoding="utf-8")
+            self.assertEqual(len(board.load_seed_annotations(str(multi))), 3)
+
+    def test_valid_seed_scopes(self):
+        common = {"sectionHeading": "s", "quote": "q", "comment": "c",
+                  "author": "Codex"}
+        # plan: an explicit scope and the original scope-less shape both validate
+        plan = dict(common, planPath="p", component="01-x", version=2,
+                    isDraft=True)
+        self.assertTrue(board._valid_seed(dict(plan, scope="plan")))
+        self.assertTrue(board._valid_seed(plan))  # missing scope defaults to plan
+        self.assertFalse(board._valid_seed(dict(plan, planPath=None)))
+        # master: no routing fields, but the common fields are still required
+        self.assertTrue(board._valid_seed(dict(common, scope="master")))
+        self.assertFalse(board._valid_seed({"scope": "master", "quote": "q"}))
+        # results: needs component + an int (not bool) resultsVersion
+        self.assertTrue(board._valid_seed(
+            dict(common, scope="results", component="01-x", resultsVersion=3)))
+        self.assertFalse(board._valid_seed(
+            dict(common, scope="results", component="01-x")))
+        self.assertFalse(board._valid_seed(
+            dict(common, scope="results", component="01-x", resultsVersion=True)))
+        # an unrecognized scope is rejected outright
+        self.assertFalse(board._valid_seed(dict(common, scope="nonsense")))
 
 
 if __name__ == "__main__":

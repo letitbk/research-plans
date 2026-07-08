@@ -1005,19 +1005,41 @@ def apply_gate(root, payload, gate_spec):
     return payload
 
 
+def _is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
 def _valid_seed(s):
-    """A well-formed seed the client can render/anchor without crashing."""
-    return (
-        isinstance(s, dict)
-        and isinstance(s.get("planPath"), str)
-        and isinstance(s.get("component"), str)
-        and isinstance(s.get("version"), int) and not isinstance(s["version"], bool)
-        and isinstance(s.get("isDraft"), bool)
-        and isinstance(s.get("sectionHeading"), str)
+    """A well-formed seed the client can render/anchor without crashing.
+
+    Scope-aware (v0.9 Phase 4). Every scope shares sectionHeading/quote/comment/
+    author; the routing fields differ:
+      - plan (default when scope absent): planPath, component, version, isDraft
+      - master: no extra fields (anchors container-wide on the tracker)
+      - results: component, resultsVersion
+    """
+    if not isinstance(s, dict):
+        return False
+    if not (
+        isinstance(s.get("sectionHeading"), str)
         and isinstance(s.get("quote"), str) and bool(s["quote"])
         and isinstance(s.get("comment"), str) and bool(s["comment"])
         and isinstance(s.get("author"), str)
-    )
+    ):
+        return False
+    scope = s.get("scope", "plan")
+    if scope == "plan":
+        return (
+            isinstance(s.get("planPath"), str)
+            and isinstance(s.get("component"), str)
+            and _is_int(s.get("version"))
+            and isinstance(s.get("isDraft"), bool)
+        )
+    if scope == "master":
+        return True
+    if scope == "results":
+        return isinstance(s.get("component"), str) and _is_int(s.get("resultsVersion"))
+    return False
 
 
 def load_seed_annotations(path):

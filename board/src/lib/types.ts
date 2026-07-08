@@ -276,22 +276,31 @@ export interface ReviewRequest {
   agent: "codex" | "gemini" | "subagent" | "panel";
   scope: "plan" | "master" | "results";
   component?: string;
-  version?: number;
+  version?: number; // plan scope: the plan version
+  resultsVersion?: number; // results scope: the bundle
   planPath?: string;
   isDraft?: boolean;
 }
 
-// A reviewer's plan comment before browser anchoring. board.py --seed-annotations
-// injects a list of these; the app turns each into a pending PlanCommentAnnotation.
+// A reviewer's comment before browser anchoring. board.py --seed-annotations
+// injects a list of these; App turns each into a pending annotation keyed by
+// `scope`: plan → PlanCommentAnnotation, master → DocCommentAnnotation (tracker),
+// results → ResultCommentAnnotation (report target). Missing scope defaults to
+// "plan" (the original Phase-1 shape).
 export interface SeededAnnotation {
-  planPath: string;
-  component: string;
-  version: number;
-  isDraft: boolean;
+  scope?: "plan" | "master" | "results";
+  // common to every scope
   sectionHeading: string;
   quote: string;
   comment: string;
   author: string;
+  // plan scope
+  planPath?: string;
+  component?: string; // plan + results
+  version?: number;
+  isDraft?: boolean;
+  // results scope
+  resultsVersion?: number;
 }
 
 export interface DocCommentAnnotation {
@@ -307,6 +316,7 @@ export interface DocCommentAnnotation {
   occurrenceIndex: number;
   anchored: boolean;
   comment: string;
+  author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
 }
 
 export interface GeneralAnnotation {
@@ -329,6 +339,10 @@ export interface ResultCommentAnnotation {
     occurrenceIndex?: number;
   };
   comment: string;
+  author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
+  // Seeded reviewer comments (v0.9) start false and flip true when their report
+  // quote paints; undefined on researcher-selected comments (always anchored).
+  anchored?: boolean;
 }
 
 export interface ScriptCommentAnnotation {

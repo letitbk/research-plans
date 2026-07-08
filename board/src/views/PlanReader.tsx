@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "../components/Markdown";
 import DiffView from "../components/DiffView";
 import AnnotationLayer from "../components/AnnotationLayer";
+import ReviewMenu from "../components/ReviewMenu";
 import { Notice } from "./Tracker";
 import {
   AGENT_SECTIONS,
@@ -36,15 +37,6 @@ const docLabel = (d: DocRef): string =>
     : d.docKind === "workingDraft"
       ? `proposed v${d.version}`
       : `v${d.version}`;
-
-// Agent plan review (v0.9). All four reviewers are wired: subagent, Codex,
-// Gemini, and the multi-lens subagent panel.
-const REVIEW_AGENTS: { id: ReviewRequest["agent"]; label: string }[] = [
-  { id: "subagent", label: "Claude subagent" },
-  { id: "panel", label: "Subagent panel" },
-  { id: "codex", label: "Codex (GPT-5.5)" },
-  { id: "gemini", label: "Gemini (agy)" },
-];
 
 export default function PlanReader({
   data,
@@ -156,10 +148,6 @@ export default function PlanReader({
   // Part 2 (agent/technical half) collapse state; reset when the shown doc changes.
   const [agentOpen, setAgentOpen] = useState(false);
   useEffect(() => setAgentOpen(false), [doc?.path]);
-
-  // Agent-review menu (v0.9); close when the shown doc changes.
-  const [reviewMenuOpen, setReviewMenuOpen] = useState(false);
-  useEffect(() => setReviewMenuOpen(false), [doc?.path]);
 
   // Diff base is the immediately preceding step in the version history (previous
   // snapshot, signed version, or working draft) — reads the evolution in order.
@@ -304,37 +292,18 @@ export default function PlanReader({
           )}
           <div className="ml-auto flex items-center gap-2">
             {canPost && !data.gate && onRequestReview && doc.docKind !== "draftSnapshot" && (
-              <div className="relative">
-                <button
-                  className="rounded-full border border-violet-300 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 hover:border-violet-500"
-                  onClick={() => setReviewMenuOpen((o) => !o)}
-                >
-                  Review with ▾
-                </button>
-                {reviewMenuOpen && (
-                  <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-stone-200 bg-white py-1 shadow-lg">
-                    {REVIEW_AGENTS.map((ag) => (
-                      <button
-                        key={ag.id}
-                        className="block w-full px-3 py-1.5 text-left text-xs text-stone-700 hover:bg-stone-100"
-                        onClick={() => {
-                          setReviewMenuOpen(false);
-                          onRequestReview({
-                            agent: ag.id,
-                            scope: "plan",
-                            component: group.component,
-                            version: doc.version,
-                            planPath: doc.path,
-                            isDraft: doc.isDraft,
-                          });
-                        }}
-                      >
-                        {ag.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ReviewMenu
+                onPick={(agent) =>
+                  onRequestReview({
+                    agent,
+                    scope: "plan",
+                    component: group.component,
+                    version: doc.version,
+                    planPath: doc.path,
+                    isDraft: doc.isDraft,
+                  })
+                }
+              />
             )}
             {prevDoc && (
               <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
