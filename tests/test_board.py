@@ -540,5 +540,35 @@ class TestPublish(unittest.TestCase):
                                         "gh-pages", "p3"), "pushed")
 
 
+class TestSeedAnnotations(unittest.TestCase):
+    def test_load_seed_annotations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            good = root / "seeds.json"
+            good.write_text(json.dumps([{
+                "planPath": "plans/execution/01-x/v1.md", "component": "01-x",
+                "version": 1, "isDraft": False, "sectionHeading": "Goal",
+                "quote": "x", "comment": "c", "author": "Subagent",
+            }]), encoding="utf-8")
+            self.assertEqual(len(board.load_seed_annotations(str(good))), 1)
+            # malformed items in an otherwise-valid array are dropped, never crashy
+            mixed = root / "mixed.json"
+            mixed.write_text(json.dumps([
+                {"planPath": "p", "component": "c", "version": 1, "isDraft": False,
+                 "sectionHeading": "s", "quote": "q", "comment": "cc", "author": "Sub"},
+                {"quote": 5, "comment": None},   # wrong types
+                "not a dict",
+            ]), encoding="utf-8")
+            self.assertEqual(len(board.load_seed_annotations(str(mixed))), 1)
+            # a bad seed file must never block the board — always returns []
+            bad = root / "bad.json"
+            bad.write_text('{"not": "a list"}', encoding="utf-8")
+            self.assertEqual(board.load_seed_annotations(str(bad)), [])
+            broken = root / "broken.json"
+            broken.write_text("{", encoding="utf-8")
+            self.assertEqual(board.load_seed_annotations(str(broken)), [])
+            self.assertEqual(board.load_seed_annotations(str(root / "nope.json")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

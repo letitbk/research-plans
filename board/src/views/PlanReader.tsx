@@ -15,6 +15,7 @@ import type {
   DraftSnapshotFile,
   ExecutionPlanGroup,
   PlanCommentAnnotation,
+  ReviewRequest,
 } from "../lib/types";
 
 type DocKind = "signed" | "workingDraft" | "draftSnapshot";
@@ -36,6 +37,15 @@ const docLabel = (d: DocRef): string =>
       ? `proposed v${d.version}`
       : `v${d.version}`;
 
+// Agent plan review (v0.9). Phase 1 wires the subagent end-to-end; Codex/Gemini/
+// panel arrive in later phases (the routing handles them gracefully meanwhile).
+const REVIEW_AGENTS: { id: ReviewRequest["agent"]; label: string }[] = [
+  { id: "subagent", label: "Claude subagent" },
+  { id: "panel", label: "Subagent panel" },
+  { id: "codex", label: "Codex (GPT-5.5)" },
+  { id: "gemini", label: "Gemini (agy)" },
+];
+
 export default function PlanReader({
   data,
   canAnnotate,
@@ -45,6 +55,8 @@ export default function PlanReader({
   onAddPlanComment,
   onPaintResult,
   onOpenResults,
+  canPost,
+  onRequestReview,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -60,6 +72,8 @@ export default function PlanReader({
     scopeAbsent: Set<string>,
   ) => void;
   onOpenResults: (slug: string) => void;
+  canPost?: boolean;
+  onRequestReview?: (req: ReviewRequest) => void;
 }) {
   const groups = data.files.executionPlans;
   const group =
@@ -142,6 +156,10 @@ export default function PlanReader({
   // Part 2 (agent/technical half) collapse state; reset when the shown doc changes.
   const [agentOpen, setAgentOpen] = useState(false);
   useEffect(() => setAgentOpen(false), [doc?.path]);
+
+  // Agent-review menu (v0.9); close when the shown doc changes.
+  const [reviewMenuOpen, setReviewMenuOpen] = useState(false);
+  useEffect(() => setReviewMenuOpen(false), [doc?.path]);
 
   // Diff base is the immediately preceding step in the version history (previous
   // snapshot, signed version, or working draft) — reads the evolution in order.
@@ -284,16 +302,51 @@ export default function PlanReader({
               </button>
             ),
           )}
-          {prevDoc && (
-            <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
-              <input
-                type="checkbox"
-                checked={diffOn}
-                onChange={(e) => setDiffOn(e.target.checked)}
-              />
-              Diff vs {docLabel(prevDoc)}
-            </label>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {canPost && !data.gate && onRequestReview && doc.docKind !== "draftSnapshot" && (
+              <div className="relative">
+                <button
+                  className="rounded-full border border-violet-300 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 hover:border-violet-500"
+                  onClick={() => setReviewMenuOpen((o) => !o)}
+                >
+                  Review with ▾
+                </button>
+                {reviewMenuOpen && (
+                  <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+                    {REVIEW_AGENTS.map((ag) => (
+                      <button
+                        key={ag.id}
+                        className="block w-full px-3 py-1.5 text-left text-xs text-stone-700 hover:bg-stone-100"
+                        onClick={() => {
+                          setReviewMenuOpen(false);
+                          onRequestReview({
+                            agent: ag.id,
+                            scope: "plan",
+                            component: group.component,
+                            version: doc.version,
+                            planPath: doc.path,
+                            isDraft: doc.isDraft,
+                          });
+                        }}
+                      >
+                        {ag.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {prevDoc && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={diffOn}
+                  onChange={(e) => setDiffOn(e.target.checked)}
+                />
+                Diff vs {docLabel(prevDoc)}
+              </label>
+            )}
+          </div>
         </div>
 
         {docs.some((d) => d.docKind === "draftSnapshot") && (

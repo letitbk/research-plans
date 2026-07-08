@@ -184,7 +184,7 @@ export default function Tracker({
       ) {
         drift.push({
           text: `${r.component} is done but results r${latestResult.resultsVersion} are unverified`,
-          slug,
+          slug: slug ?? undefined,
         });
       }
       const latestV = g.versions[g.versions.length - 1];
@@ -193,7 +193,7 @@ export default function Tracker({
         if (prov && /retrospective/i.test(prov)) {
           drift.push({
             text: `${r.component} is in progress but its latest plan is retrospective — write a prospective v${latestV.version + 1}`,
-            slug,
+            slug: slug ?? undefined,
           });
         }
       }

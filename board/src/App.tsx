@@ -19,6 +19,7 @@ import type {
   DocCommentAnnotation,
   PlanCommentAnnotation,
   ResultCommentAnnotation,
+  ReviewRequest,
   ScriptCommentAnnotation,
   VerdictRequest,
 } from "./lib/types";
@@ -67,14 +68,56 @@ export default function App({ data }: { data: BoardData }) {
   );
   const [annotations, setAnnotations] = useState<Annotation[]>(() => {
     if (!canAnnotate) return [];
+    let base: Annotation[] = [];
     try {
       const saved = localStorage.getItem(storageKey);
-      return saved ? (JSON.parse(saved) as Annotation[]) : [];
+      base = saved ? (JSON.parse(saved) as Annotation[]) : [];
     } catch {
-      return [];
+      base = [];
     }
+    // Agent plan review (v0.9): reviewer comments arrive unanchored; they paint
+    // in-browser at first quote match and their anchored flag is set by the paint
+    // pass. occurrenceIndex 0 anchors the first match (section-aware disambiguation
+    // is a later hardening).
+    // One-shot per board session: `${storageKey}:seeded` records which reviewer
+    // comments have already been ingested, so deleting one and reloading before
+    // Send does not re-add it (curation must stick), and reopening never doubles.
+    const seededKey = (p: string, q: string, c: string, a: string) =>
+      `${p}|${q}|${c}|${a}`;
+    let ingested: Set<string>;
+    try {
+      ingested = new Set(
+        JSON.parse(localStorage.getItem(`${storageKey}:seeded`) ?? "[]") as string[],
+      );
+    } catch {
+      ingested = new Set();
+    }
+    const seeded: Annotation[] = (data.seededAnnotations ?? [])
+      .filter(
+        (s) => !ingested.has(seededKey(s.planPath, s.quote, s.comment, s.author)),
+      )
+      .map((s) => ({
+      id: nextId(),
+      type: "plan-comment" as const,
+      planPath: s.planPath,
+      component: s.component,
+      version: s.version,
+      isDraft: s.isDraft,
+      quote: s.quote,
+      prefix: "",
+      suffix: "",
+      sectionHeading: s.sectionHeading,
+      scope: "",
+      occurrenceIndex: 0,
+      anchored: false,
+      comment: s.comment,
+      author: s.author,
+    }));
+    return [...base, ...seeded];
   });
-  const [drawerOpen, setDrawerOpen] = useState(gate !== null);
+  const [drawerOpen, setDrawerOpen] = useState(
+    gate !== null || (data.seededAnnotations?.length ?? 0) > 0,
+  );
   const [submitState, setSubmitState] = useState<
     "idle" | "sending" | "sent" | "approved" | "denied" | "failed" | "downloaded"
   >("idle");
@@ -104,6 +147,25 @@ export default function App({ data }: { data: BoardData }) {
       // storage full/unavailable — annotations still live in memory
     }
   }, [annotations, canAnnotate, storageKey]);
+
+  // Record seeded reviewer comments as ingested (one-shot) — see the annotations
+  // initializer. Runs once so a dismissed seed is not re-added on reload.
+  useEffect(() => {
+    const seeds = data.seededAnnotations ?? [];
+    if (!canAnnotate || seeds.length === 0) return;
+    try {
+      const prev = new Set<string>(
+        JSON.parse(localStorage.getItem(`${storageKey}:seeded`) ?? "[]"),
+      );
+      for (const s of seeds) {
+        prev.add(`${s.planPath}|${s.quote}|${s.comment}|${s.author}`);
+      }
+      localStorage.setItem(`${storageKey}:seeded`, JSON.stringify([...prev]));
+    } catch {
+      // storage unavailable — one-shot degrades to memory only
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addPlanComment = useCallback(
     (a: Omit<PlanCommentAnnotation, "id" | "type">) => {
@@ -233,6 +295,49 @@ export default function App({ data }: { data: BoardData }) {
           feedbackMarkdown,
           payloadHash,
           feedbackDocument,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSubmitState("sent");
+      setPendingVerdict(null);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+    } catch {
+      setSubmitState("failed");
+    }
+  };
+
+  // Agent plan review (v0.9): submit a review-request through the same feedback
+  // channel. Any pending manual comments ride along and get routed first; the
+  // session then runs the reviewer and reopens the board with its comments seeded.
+  const requestReview = async (req: ReviewRequest) => {
+    const md = buildFeedbackMarkdown(annotations, pendingVerdict, req);
+    const doc = buildFeedbackDocument(md, {
+      sessionId,
+      generatedAt: data.generatedAt,
+      mode: data.mode,
+      focus: data.focus,
+      reviewer: remote ? reviewer.trim() || "anonymous reviewer" : null,
+      payloadHash,
+      shareHash: data.shareHash ?? null,
+      annotations,
+      verdict: pendingVerdict,
+      reviewRequest: req,
+    });
+    setSubmitState("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          annotations,
+          feedbackMarkdown: md,
+          payloadHash,
+          feedbackDocument: doc,
+          reviewRequest: req,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -449,6 +554,8 @@ export default function App({ data }: { data: BoardData }) {
               setSelectedComponent(slug);
               setTab("results");
             }}
+            canPost={canPost}
+            onRequestReview={requestReview}
           />
         )}
         {tab === "results" && (
@@ -520,6 +627,11 @@ export default function App({ data }: { data: BoardData }) {
                         {a.isDraft ? " (draft)" : ""}
                       </span>
                       {a.sectionHeading && <span>· {a.sectionHeading}</span>}
+                      {a.author && (
+                        <span className="rounded bg-violet-100 px-1 py-0.5 font-medium text-violet-700">
+                          via {a.author}
+                        </span>
+                      )}
                       {!a.anchored && (
                         <span className="rounded bg-stone-100 px-1 py-0.5">
                           unanchored

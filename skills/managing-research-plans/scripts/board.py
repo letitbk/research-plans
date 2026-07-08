@@ -47,6 +47,7 @@ SLOT = '<script id="board-data" type="application/json">{}</script>'
 SLOT_OPEN = '<script id="board-data" type="application/json">'
 GITIGNORE_LINES = [
     "/.board-feedback.md",
+    "/.rp-seed-*.json",
     "/.board.lock",
     "/board-share.html",
     "/execution/*/.draft-v*.md",
@@ -1003,6 +1004,40 @@ def apply_gate(root, payload, gate_spec):
     return payload
 
 
+def _valid_seed(s):
+    """A well-formed seed the client can render/anchor without crashing."""
+    return (
+        isinstance(s, dict)
+        and isinstance(s.get("planPath"), str)
+        and isinstance(s.get("component"), str)
+        and isinstance(s.get("version"), int) and not isinstance(s["version"], bool)
+        and isinstance(s.get("isDraft"), bool)
+        and isinstance(s.get("sectionHeading"), str)
+        and isinstance(s.get("quote"), str) and bool(s["quote"])
+        and isinstance(s.get("comment"), str) and bool(s["comment"])
+        and isinstance(s.get("author"), str)
+    )
+
+
+def load_seed_annotations(path):
+    """Reviewer-produced comments (JSON list) for --seed-annotations (agent plan
+    review). Returns only well-formed items — a bad seed file OR a bad item must
+    never block the board or crash the client."""
+    try:
+        seeds = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print("board: could not read --seed-annotations %s: %s" % (path, e),
+              file=sys.stderr)
+        return []
+    if not isinstance(seeds, list):
+        return []
+    valid = [s for s in seeds if _valid_seed(s)]
+    if len(valid) != len(seeds):
+        print("board: dropped %d malformed seed annotation(s)"
+              % (len(seeds) - len(valid)), file=sys.stderr)
+    return valid
+
+
 def main():
     ap = argparse.ArgumentParser(description="research-plans board")
     ap.add_argument("--focus", default=None, metavar="NN-slug")
@@ -1018,6 +1053,9 @@ def main():
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--timeout", type=int, default=3600, metavar="SECONDS")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--seed-annotations", default=None, metavar="FILE",
+                    help="inject reviewer-produced comments (JSON list) as pending "
+                         "annotations — agent plan review (v0.9)")
     args = ap.parse_args()
 
     root = find_root()
@@ -1044,6 +1082,12 @@ def main():
         payload = collect_payload(root, "live", slug)
         payload["focusResults"] = focus_results
         build_assets(root, payload)
+        if args.seed_annotations:
+            # Agent plan review (v0.9): reviewer-produced comments, seeded as
+            # pending annotations for the researcher to curate and Send to Claude.
+            seeds = load_seed_annotations(args.seed_annotations)
+            if seeds:
+                payload["seededAnnotations"] = seeds
         if args.gate:
             payload = apply_gate(root, payload, args.gate)
         elif args.gate_batch:

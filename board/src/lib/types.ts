@@ -6,6 +6,9 @@ export interface BoardData {
   mode: "live" | "static" | "remote";
   focus: string | null;
   focusResults?: number | null; // --focus slug:rN opens the Results view on rN
+  // agent plan review (v0.9): reviewer-produced comments injected via
+  // board.py --seed-annotations; resolved to anchors in the browser on mount.
+  seededAnnotations?: SeededAnnotation[];
   shareHash?: string; // remote mode: Python-computed, echoed back in feedback
   gate?: { component: string; proposedVersion: number }; // sign-off gate mode
   gateBatch?: GateBatchEntry[]; // batch sign-off wizard (one plan at a time)
@@ -263,6 +266,32 @@ export interface PlanCommentAnnotation {
   occurrenceIndex: number;
   anchored: boolean;
   comment: string;
+  author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
+}
+
+// ---- agent plan review (v0.9) ----
+
+// Rides the feedback fence: the button submits it, the session runs the agent.
+export interface ReviewRequest {
+  agent: "codex" | "gemini" | "subagent" | "panel";
+  scope: "plan" | "master" | "results";
+  component?: string;
+  version?: number;
+  planPath?: string;
+  isDraft?: boolean;
+}
+
+// A reviewer's plan comment before browser anchoring. board.py --seed-annotations
+// injects a list of these; the app turns each into a pending PlanCommentAnnotation.
+export interface SeededAnnotation {
+  planPath: string;
+  component: string;
+  version: number;
+  isDraft: boolean;
+  sectionHeading: string;
+  quote: string;
+  comment: string;
+  author: string;
 }
 
 export interface DocCommentAnnotation {

@@ -107,6 +107,25 @@ describe("buildFeedbackMarkdown", () => {
     expect(md).toContain("## 2. [Timeline — general]");
   });
 
+  it("renders a review-request header (agent plan review)", () => {
+    const md = buildFeedbackMarkdown([], null, {
+      agent: "subagent",
+      scope: "plan",
+      component: "03-x",
+      version: 2,
+      isDraft: false,
+    });
+    expect(md).toContain("## REVIEW REQUEST: subagent on 03-x v2");
+  });
+
+  it("badges an agent-authored plan comment with (via …)", () => {
+    const md = buildFeedbackMarkdown(
+      [{ ...planComment, author: "Codex" } as Annotation],
+      null,
+    );
+    expect(md).toContain("## 1. [03-x v2 — Goal] (via Codex)");
+  });
+
   it("renders the verdict block with the apply command", () => {
     const verdict: VerdictRequest = {
       component: "03-x", resultsVersion: 1,
