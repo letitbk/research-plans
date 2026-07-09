@@ -146,6 +146,7 @@ def payload_files(payload):
     out.extend(f["reviews"])
     if f.get("history"):
         out.append(f["history"])
+    out.extend(f.get("archives", []))
     return out
 
 
@@ -208,7 +209,9 @@ def collect_results(root, comp_dir):
     return bundles
 
 
-TEXT_INLINE_EXTS = {".csv", ".md", ".html", ".txt", ".tsv", ".tex", ".json"}
+# v0.10: only sanitizable table formats inline; CSV/TSV/tex/json/txt are
+# click-to-open links — the board displays a table's typeset render instead.
+TEXT_INLINE_EXTS = {".md", ".html"}
 TEXT_INLINE_MAX = 200 * 1024
 
 
@@ -268,10 +271,12 @@ def split_focus(focus):
     return focus, None
 
 
-def collect_drift(root, exec_groups):
+def collect_drift(root, exec_groups, master_content="", archive_contents=()):
     """Filesystem/git hygiene flags for the Tracker: a stale exported board.html,
     leftover results staging dirs, and bundles whose sources drifted since capture.
-    (14-day inactivity is computed client-side from git.fileDates.)"""
+    (14-day inactivity is computed client-side from git.fileDates.)
+    Components linked only in an ARCHIVED master plan (pre-renewal) are skipped
+    for source drift — archived work is never nagged about."""
     plans = root / "plans"
     board_html = plans / "board.html"
     stale_board = None
@@ -294,6 +299,10 @@ def collect_drift(root, exec_groups):
     for g in exec_groups:
         if not g.get("results"):
             continue
+        marker = "execution/%s/" % g["component"]
+        if marker not in master_content and any(
+                marker in a for a in archive_contents):
+            continue  # pre-renewal component — archived work is never nagged about
         try:
             _, changed = changed_sources(root, g["component"])
         except Exception:
@@ -379,6 +388,15 @@ def collect_payload(root, mode, focus):
         if (plans / "history.md").is_file()
         else None
     )
+    # Archived master plans (v0.10 renewal record) — present-only, like history.
+    archives = []
+    arch_dir = plans / "archive"
+    if arch_dir.is_dir():
+        for f in sorted(arch_dir.glob("master-plan-*.md")):
+            m = re.fullmatch(r"master-plan-(\d{4}-\d{2}-\d{2})(?:-\d+)?\.md", f.name)
+            entry = read_file(root, str(f.relative_to(root)))
+            entry["archivedOn"] = m.group(1) if m else ""
+            archives.append(entry)
 
     if mode == "remote" and focus:
         exec_groups = [g for g in exec_groups if g["component"] == focus]
@@ -396,6 +414,8 @@ def collect_payload(root, mode, focus):
                 "path": "plans/history.md",
                 "content": "# Reconstructed History\n\n(omitted from focused share)\n",
             }
+        # archived master plans are whole-project material too — omit entirely.
+        archives = []
 
     all_paths = ["plans/master-plan.md", "plans/decision-log.md"]
     for g in exec_groups:
@@ -419,11 +439,15 @@ def collect_payload(root, mode, focus):
             "executionPlans": exec_groups,
             "reviews": reviews,
             **({"history": history} if history is not None else {}),
+            **({"archives": archives} if archives else {}),
         },
     }
     if mode != "remote":
         # Researcher-only hygiene flags; kept out of collaborator shares.
-        payload["drift"] = collect_drift(root, exec_groups)
+        payload["drift"] = collect_drift(
+            root, exec_groups,
+            payload["files"]["masterPlan"]["content"],
+            [a["content"] for a in archives])
     if mode == "live":
         payload["project"]["root"] = str(root)
     elif mode == "remote":
