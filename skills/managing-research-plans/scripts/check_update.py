@@ -58,7 +58,11 @@ def write_state(path, state):
 
 
 def should_check(state, now, ttl=86400.0):
-    return (now - float(state.get("lastAttempt", 0.0))) >= ttl
+    try:
+        last = float(state.get("lastAttempt", 0.0))
+    except (TypeError, ValueError):
+        return True
+    return (now - last) >= ttl
 
 
 def should_notify(state, remote_version):
@@ -69,7 +73,7 @@ def sanitize_highlight(s, width=80):
     s = re.sub(r"<[^>]*>", "", str(s))     # strip HTML tags
     s = re.sub(r"[`*_]", "", s)            # strip markdown emphasis/code marks
     s = re.sub(r"\s+", " ", s)             # newlines/tabs -> single space (keep word gaps)
-    s = "".join(ch for ch in s if ord(ch) >= 32 and ord(ch) != 127)  # drop ESC/control
+    s = "".join(ch for ch in s if (32 <= ord(ch) < 127) or ord(ch) >= 160)  # drop ESC/control/C1
     s = s.strip()
     if len(s) > width:
         s = s[: width - 1].rstrip() + "…"
@@ -219,4 +223,8 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        rc = main()
+    except Exception:
+        rc = 0
+    raise SystemExit(rc)

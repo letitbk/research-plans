@@ -76,6 +76,10 @@ class TestThrottleAndCadence(unittest.TestCase):
         self.assertFalse(cu.should_notify(state, "0.12.0"))
         self.assertTrue(cu.should_notify(state, "0.13.0"))
 
+    def test_should_check_true_when_lastattempt_nonnumeric(self):
+        state = dict(cu.DEFAULT_STATE, lastAttempt="garbage")
+        self.assertTrue(cu.should_check(state, now=100000.0))
+
 
 class TestSanitize(unittest.TestCase):
     def test_strips_markdown_and_html(self):
@@ -92,6 +96,13 @@ class TestSanitize(unittest.TestCase):
     def test_truncates_to_width(self):
         out = cu.sanitize_highlight("x" * 200, width=80)
         self.assertLessEqual(len(out), 80)
+
+    def test_strips_c1_control_byte(self):
+        self.assertNotIn("\x9b", cu.sanitize_highlight("Dark\x9bmode"))
+
+    def test_preserves_legitimate_unicode(self):
+        self.assertIn("→", cu.sanitize_highlight("arrow → here"))
+        self.assertIn("é", cu.sanitize_highlight("café"))
 
 
 class TestChangelog(unittest.TestCase):
