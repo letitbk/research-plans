@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "../components/Markdown";
 import ArtifactCard from "../components/ArtifactCard";
+import ProvenanceFlow from "../components/ProvenanceFlow";
 import ScriptViewer from "../components/ScriptViewer";
 import AnnotationLayer, {
   type AnchoredSelection,
@@ -232,26 +233,37 @@ export default function Results({
       resultsVersion: bundle.resultsVersion,
       comment: partial.comment,
     };
+    // surfaceScope records WHERE the selection was made (diagram node vs
+    // card), so the highlight repaints on that surface — a provenance:<id>
+    // node and its artifact:<id> card would otherwise be ambiguous.
+    const common = {
+      quote: partial.quote,
+      occurrenceIndex: partial.occurrenceIndex,
+      surfaceScope: partial.scope || undefined,
+    };
     const target =
       partial.scope.startsWith("metric:")
         ? {
             kind: "metric" as const,
             metricLabel: partial.scope.slice("metric:".length),
-            quote: partial.quote,
-            occurrenceIndex: partial.occurrenceIndex,
+            ...common,
           }
         : partial.scope.startsWith("artifact:")
           ? {
               kind: "artifact" as const,
               artifactId: partial.scope.slice("artifact:".length),
-              quote: partial.quote,
-              occurrenceIndex: partial.occurrenceIndex,
+              ...common,
             }
-          : {
-              kind: "report" as const,
-              quote: partial.quote,
-              occurrenceIndex: partial.occurrenceIndex,
-            };
+          : partial.scope.startsWith("provenance:")
+            ? {
+                kind: "artifact" as const,
+                artifactId: partial.scope.slice("provenance:".length),
+                ...common,
+              }
+            : {
+                kind: "report" as const,
+                ...common,
+              };
     onAddResultComment({ ...base, target });
   };
 
@@ -265,12 +277,15 @@ export default function Results({
       id: a.id,
       quote: a.target.quote!,
       occurrenceIndex: a.target.occurrenceIndex ?? 0,
+      // The recorded surface wins (v0.11: a diagram node vs its card); older
+      // annotations fall back to the scope derived from the target kind.
       scope:
-        a.target.kind === "metric"
+        a.target.surfaceScope ??
+        (a.target.kind === "metric"
           ? `metric:${a.target.metricLabel}`
           : a.target.kind === "artifact"
             ? `artifact:${a.target.artifactId}`
-            : "report",
+            : "report"),
     }));
 
   return (
@@ -448,66 +463,6 @@ export default function Results({
           <Notice text="This bundle's manifest.json did not parse — showing what can be shown." />
         )}
 
-        {/* provenance strip — everything here comes from data already in the
-            bundle/plan; collapsed by default so it informs without crowding */}
-        {m &&
-          (() => {
-            const planFile =
-              m.planVersion != null
-                ? group.versions.find((v) => v.version === m.planVersion)
-                : null;
-            const planGoal = planFile
-              ? parseExecutionPlan(planFile.content).goal
-              : null;
-            return (
-              <details className="mb-4 rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 px-4 py-2 text-xs text-stone-600 dark:text-stone-400">
-                <summary className="cursor-pointer select-none text-stone-500">
-                  How these were produced — captured {m.capturedAt}
-                  {m.planVersion != null
-                    ? m.provenance === "retrofit"
-                      ? ` · documented by retrospective plan v${m.planVersion}`
-                      : ` under plan v${m.planVersion}`
-                    : " · no governing plan (retrofit)"}
-                </summary>
-                <div className="mt-2 space-y-2">
-                  {planGoal && (
-                    <div>
-                      <div className="font-semibold text-stone-700 dark:text-stone-300">
-                        Plan goal (v{m.planVersion})
-                      </div>
-                      <p className="mt-0.5 whitespace-pre-line">{planGoal}</p>
-                    </div>
-                  )}
-                  {m.artifacts.length > 0 && (
-                    <div>
-                      <div className="font-semibold text-stone-700 dark:text-stone-300">
-                        Sources and producing scripts
-                      </div>
-                      <ul className="mt-0.5 space-y-0.5">
-                        {m.artifacts.map((a) => (
-                          <li key={a.id}>
-                            <code>{a.source.path}</code>
-                            {a.producedBy ? (
-                              <>
-                                {" "}
-                                ← <code>{a.producedBy.sourcePath}</code>
-                              </>
-                            ) : (
-                              <span className="text-stone-400 dark:text-stone-500">
-                                {" "}
-                                (producing script unknown)
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </details>
-            );
-          })()}
-
         {(() => {
           const findingMode = !!(
             m &&
@@ -523,8 +478,26 @@ export default function Results({
             ? m.artifacts.filter((a) => !referenced.has(a.id))
             : [];
           const onZoom = (url: string, title: string) => setZoom({ url, title });
+          const planFile =
+            m && m.planVersion != null
+              ? group.versions.find((v) => v.version === m.planVersion)
+              : null;
+          const planGoal = planFile
+            ? parseExecutionPlan(planFile.content).goal
+            : null;
           const bundleBody = (
             <>
+              {/* provenance flow diagram (v0.11) — inside the AnnotationLayer
+                  so drag-select comments on nodes route like everything else */}
+              {m && (
+                <ProvenanceFlow
+                  bundle={bundle}
+                  planGoal={planGoal}
+                  onOpenScript={setOpenScript}
+                  onZoom={onZoom}
+                />
+              )}
+
               {/* report — overview */}
               {bundle.report && (
                 <section
