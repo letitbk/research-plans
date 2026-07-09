@@ -7,15 +7,17 @@ import AnnotationLayer, {
 } from "../components/AnnotationLayer";
 import ReviewMenu from "../components/ReviewMenu";
 import { Notice } from "./Tracker";
-import { parseExecutionPlan } from "../lib/parse";
+import { parseExecutionPlan, preRenewalSlugs } from "../lib/parse";
 import type {
   Annotation,
   BoardData,
+  ReportRequest,
   ResultArtifact,
   ResultCommentAnnotation,
   ResultsBundle,
   ReviewRequest,
   ScriptCommentAnnotation,
+  ValidationBlock,
   VerdictRequest,
 } from "../lib/types";
 
@@ -41,6 +43,91 @@ const STATUS_CLS: Record<string, string> = {
   superseded: "border-stone-200 bg-stone-100 text-stone-500",
 };
 
+const VALIDATION_CLS: Record<ValidationBlock["status"], string> = {
+  conforms: "border-green-200 bg-green-50 text-green-800",
+  "conforms-with-amendments": "border-sky-200 bg-sky-50 text-sky-800",
+  "deviations-found": "border-amber-300 bg-amber-50 text-amber-900",
+  unverifiable: "border-stone-200 bg-stone-100 text-stone-600",
+  "not-applicable": "border-stone-200 bg-stone-50 text-stone-400",
+  skipped: "border-stone-200 bg-stone-50 text-stone-400",
+};
+
+const STEP_MARK: Record<string, { mark: string; cls: string }> = {
+  followed: { mark: "✓", cls: "text-green-700" },
+  amended: { mark: "~", cls: "text-sky-700" },
+  "deviated-unrecorded": { mark: "✗", cls: "text-amber-700" },
+  "not-executed": { mark: "✗", cls: "text-red-700" },
+  unverifiable: { mark: "○", cls: "text-stone-400" },
+};
+
+/** Plan-vs-execution audit (v0.10), sealed in the bundle at capture. */
+function ValidationSection({ v }: { v: ValidationBlock }) {
+  return (
+    <details
+      className="mb-4 rounded-lg border border-stone-200 bg-white px-4 py-2"
+      data-annot-scope="validation"
+      data-annot-section="validation"
+      open={v.status === "deviations-found"}
+    >
+      <summary className="cursor-pointer select-none py-1 text-sm">
+        <span
+          className={`mr-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${VALIDATION_CLS[v.status] ?? VALIDATION_CLS.unverifiable}`}
+        >
+          {v.status}
+        </span>
+        <span className="font-semibold text-stone-800">
+          Validation — plan vs execution
+        </span>
+        {v.validatedAt && (
+          <span className="ml-2 text-xs text-stone-400">{v.validatedAt}</span>
+        )}
+      </summary>
+      {v.reason && <p className="mt-2 text-xs text-stone-500">{v.reason}</p>}
+      {(v.steps ?? []).length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs">
+          {v.steps!.map((s, i) => (
+            <li key={i} className="flex flex-wrap gap-x-2">
+              <span className={STEP_MARK[s.verdict]?.cls ?? "text-stone-400"}>
+                {STEP_MARK[s.verdict]?.mark ?? "○"}
+              </span>
+              <span className="font-medium text-stone-700">{s.planStep}</span>
+              <span className="text-stone-400">{s.verdict}</span>
+              {s.evidence && <span className="text-stone-500">— {s.evidence}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {(v.criteria ?? []).length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-stone-100 pt-2 text-xs">
+          {v.criteria!.map((c, i) => (
+            <li key={i} className="flex flex-wrap gap-x-2">
+              <span
+                className={
+                  c.verdict === "met"
+                    ? "text-green-700"
+                    : c.verdict === "not-met"
+                      ? "text-red-700"
+                      : "text-stone-400"
+                }
+              >
+                {c.verdict === "met" ? "✓" : c.verdict === "not-met" ? "✗" : "○"}
+              </span>
+              <span className="font-medium text-stone-700">{c.criterion}</span>
+              <span className="text-stone-400">{c.verdict}</span>
+              {c.evidence && <span className="text-stone-500">— {c.evidence}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {v.notes && (
+        <p className="mt-2 border-t border-stone-100 pt-2 text-xs text-stone-600">
+          {v.notes}
+        </p>
+      )}
+    </details>
+  );
+}
+
 export default function Results({
   data,
   canAnnotate,
@@ -54,6 +141,7 @@ export default function Results({
   onVerdict,
   focusResults,
   onRequestReview,
+  onRequestReport,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -71,10 +159,12 @@ export default function Results({
   onVerdict: (v: VerdictRequest) => void;
   focusResults: number | null;
   onRequestReview?: (req: ReviewRequest) => void;
+  onRequestReport?: (req: ReportRequest) => void;
 }) {
   const groups = data.files.executionPlans.filter(
     (g) => (g.results ?? []).length > 0,
   );
+  const preRenewal = preRenewalSlugs(data);
   const group =
     groups.find((g) => g.component === selectedComponent) ?? groups[0] ?? null;
   const bundles = useMemo(() => group?.results ?? [], [group]);
@@ -201,6 +291,11 @@ export default function Results({
                 onClick={() => onSelectComponent(g.component)}
               >
                 {g.component}
+                {preRenewal.has(g.component) && (
+                  <span className="ml-1 rounded bg-stone-200 px-1 py-0.5 text-[10px] text-stone-600">
+                    pre-renewal
+                  </span>
+                )}
               </button>
             </li>
           ))}
@@ -231,18 +326,34 @@ export default function Results({
               </button>
             );
           })}
-          {canPost && onRequestReview && (
-            <div className="ml-auto">
-              <ReviewMenu
-                onPick={(agent) =>
-                  onRequestReview({
-                    agent,
-                    scope: "results",
-                    component: group.component,
-                    resultsVersion: bundle.resultsVersion,
-                  })
-                }
-              />
+          {canPost && (onRequestReview || onRequestReport) && (
+            <div className="ml-auto flex items-center gap-2">
+              {onRequestReport && (
+                <button
+                  className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:border-emerald-500"
+                  onClick={() =>
+                    onRequestReport({
+                      component: group.component,
+                      resultsVersion: bundle.resultsVersion,
+                    })
+                  }
+                  title="Assemble a shareable report for this bundle (md + pdf/docx) — sends the request and ends this board session"
+                >
+                  Generate report
+                </button>
+              )}
+              {onRequestReview && (
+                <ReviewMenu
+                  onPick={(agent) =>
+                    onRequestReview({
+                      agent,
+                      scope: "results",
+                      component: group.component,
+                      resultsVersion: bundle.resultsVersion,
+                    })
+                  }
+                />
+              )}
             </div>
           )}
         </div>
@@ -285,6 +396,14 @@ export default function Results({
           {m?.trigger === "redo-after-review" && (
             <span className="rounded bg-stone-200 px-1.5 py-0.5 text-[11px] font-medium text-stone-700">
               redo after review
+            </span>
+          )}
+          {preRenewal.has(group.component) && (
+            <span
+              className="rounded bg-stone-200 px-1.5 py-0.5 text-[11px] font-medium text-stone-700"
+              title="This component belongs to an archived master plan (pre-renewal). Browsable and reviewable; not tracked by the current plan."
+            >
+              pre-renewal
             </span>
           )}
           {canPost && !bundle.verdict && (
@@ -416,6 +535,9 @@ export default function Results({
                   <Markdown source={bundle.report.content} />
                 </section>
               )}
+
+              {/* plan-vs-execution validation (v0.10) */}
+              {m?.validation && <ValidationSection v={m.validation} />}
 
               {m && findingMode ? (
                 <>

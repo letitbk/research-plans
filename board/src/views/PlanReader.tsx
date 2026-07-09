@@ -9,6 +9,7 @@ import {
   parseExecutionPlan,
   parseMasterPlan,
   parseServes,
+  preRenewalSlugs,
 } from "../lib/parse";
 import type {
   Annotation,
@@ -68,6 +69,7 @@ export default function PlanReader({
   onRequestReview?: (req: ReviewRequest) => void;
 }) {
   const groups = data.files.executionPlans;
+  const preRenewal = preRenewalSlugs(data);
   const group =
     groups.find((g) => g.component === selectedComponent) ?? groups[0] ?? null;
 
@@ -226,6 +228,11 @@ export default function PlanReader({
                 onClick={() => onSelectComponent(g.component)}
               >
                 {g.component}
+                {preRenewal.has(g.component) && (
+                  <span className="ml-1 rounded bg-stone-200 px-1 py-0.5 text-[10px] text-stone-600">
+                    pre-renewal
+                  </span>
+                )}
               </button>
             </li>
           ))}
