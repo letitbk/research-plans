@@ -73,3 +73,54 @@ class TestThrottleAndCadence(unittest.TestCase):
         state = dict(cu.DEFAULT_STATE, lastNotifiedVersion="0.12.0")
         self.assertFalse(cu.should_notify(state, "0.12.0"))
         self.assertTrue(cu.should_notify(state, "0.13.0"))
+
+
+class TestSanitize(unittest.TestCase):
+    def test_strips_markdown_and_html(self):
+        self.assertEqual(cu.sanitize_highlight("**Dark** `mode` <b>x</b>"), "Dark mode x")
+
+    def test_strips_control_and_escape_bytes(self):
+        out = cu.sanitize_highlight("Dark\x1b[2Jmode\x07")
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+
+    def test_collapses_whitespace_and_keeps_word_boundaries(self):
+        self.assertEqual(cu.sanitize_highlight("a\n\tb   c"), "a b c")
+
+    def test_truncates_to_width(self):
+        out = cu.sanitize_highlight("x" * 200, width=80)
+        self.assertLessEqual(len(out), 80)
+
+
+class TestChangelog(unittest.TestCase):
+    KEEP_A_CHANGELOG = (
+        "# Changelog\n\n"
+        "## [0.12.0] - 2026-07-09\n\n"
+        "### Added\n"
+        "- **Update reminders.** A session-start notice.\n"
+        "- **Version pinning.** Docs for installing an old version.\n"
+        "- **Release tags.** Every version tagged.\n"
+        "- **A fourth item.** Should not appear.\n\n"
+        "## [0.11.0] - 2026-07-09\n"
+        "- **Dark mode.** Older release.\n"
+    )
+    CURRENT_REPO_FORMAT = (
+        "# Changelog\n\n"
+        "## 0.11.0 (2026-07-09)\n\n"
+        "UI release — dark mode.\n\n"
+        "- **Dark mode.** A sun/moon toggle.\n"
+        "- **Soft-unwrap.** Paragraphs flow.\n\n"
+        "## 0.10.0 (2026-07-09)\n"
+        "- **Journal outputs.** Older.\n"
+    )
+
+    def test_extracts_bold_leads_from_newest_section_only(self):
+        hl = cu.parse_changelog_highlights(self.KEEP_A_CHANGELOG)
+        self.assertEqual(hl, ["Update reminders.", "Version pinning.", "Release tags."])
+
+    def test_handles_current_repo_header_format(self):
+        hl = cu.parse_changelog_highlights(self.CURRENT_REPO_FORMAT)
+        self.assertEqual(hl, ["Dark mode.", "Soft-unwrap."])
+
+    def test_empty_on_no_sections(self):
+        self.assertEqual(cu.parse_changelog_highlights("no headers here"), [])
