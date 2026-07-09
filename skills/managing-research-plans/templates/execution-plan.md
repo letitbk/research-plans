@@ -54,7 +54,7 @@ Stopping rule: <only for an iterated component — a collection round, a pilot/r
 
 ## Verification
 
-<How the researcher will judge whether the work succeeded. Concrete and checkable: executable tests, data audits, citation validation, code review, human review of specific outputs. Not "review the results".>
+<How the researcher will judge whether the work succeeded. Concrete and checkable: executable tests, data audits, citation validation, code review, human review of specific outputs. Not "review the results". For an analysis component, name the deliverable files: the journal-ready figure(s) and typeset table(s) (.png + .tex) this component will produce, per the project's output conventions (CLAUDE.md rule 7).>
 
 ## Out of scope
 

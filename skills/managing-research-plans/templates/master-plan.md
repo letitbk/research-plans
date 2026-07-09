@@ -3,7 +3,8 @@
 
 Last updated: <YYYY-MM-DD>
 Initialized: <YYYY-MM-DD HH:MM>
-<!-- Initialized is the adoption cutoff: nothing before it is loggable, and nothing before it counts as a deviation — no plan governed that work. Never edit it. -->
+<!-- Initialized is the adoption cutoff: nothing before it is loggable, and nothing before it counts as a deviation — no plan governed that work. Never edit it — a renewal copies it forward unchanged. -->
+Renewed: <YYYY-MM-DD — one line: the new direction and why; names the archived plan. Written only by /research-plans:renew; delete this line otherwise.>
 
 ## Project context
 
@@ -28,6 +29,10 @@ Components are **research activities in service of the research questions**; the
 Keep **Outcome / notes to one line per component**. Detail belongs in that component's execution plan and in `decision-log.md`, not here.
 
 **Numbering.** The `#` is a **stable identifier**: assigned once, never changed, never reused (a `dropped` component keeps its number). It is not a sequence — the **table row order is the work sequence**, and rows may be reordered freely to reflect how the work actually ran, so numbers can sit out of order down the column. A component's number and slug never move: its execution plan (`execution/<NN-slug>/`) and any finalized results bundle are addressed by that slug forever. To show a late-adopted component in its true place, move its row — never renumber it.
+
+## Foundations
+
+<Only after a renewal — delete otherwise. What this renewal builds on: the archived master plan (plans/archive/master-plan-<date>.md), which prior components were carried over and which were left archived (one line of reason each), and pointers to reusable prior assets (data, cleaned panels, scripts).>
 
 ## Sequencing notes
 

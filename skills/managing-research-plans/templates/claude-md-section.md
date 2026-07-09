@@ -9,6 +9,10 @@ This project uses the research-plans workflow (https://github.com/letitbk/resear
 4. Surface interpretive choices (variable selection, case exclusions, coding rules, model specification) to the researcher **before** acting on them. Do not decide research questions, analytical choices, or interpretation on the researcher's behalf.
 5. After execution work, update the Components table in `plans/master-plan.md`. Keep Outcome / notes to one line per component, and keep each component's Serves linkage (which research questions it serves) current.
 6. If work is about to exceed what the current execution plan covers, pause and tell the researcher. Propose a new plan version rather than drifting.
+7. Output conventions — target journal: <target journal>. Analysis deliverables are journal-ready, not raw output:
+   - Figures: vector PDF plus a PNG preview, sized to a journal column, grayscale-safe. Use the /journal-figures skill if available; otherwise export to the same spec with standard tooling.
+   - Tables: a typeset table (.png preview plus .tex source, booktabs style). Use the /journal-tables skill if available; otherwise modelsummary/kableExtra/gt to the same formats. A CSV of estimates is an intermediate, never the deliverable.
+   - Every figure and table carries a title and a one-line caption suitable for the manuscript.
 
 The `managing-research-plans` skill (from the research-plans plugin) has these conventions in depth. If mid-session logging was missed, `/research-plans:sync` is the recovery checkpoint.
 <!-- research-plans:end -->
