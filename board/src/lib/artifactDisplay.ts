@@ -1,7 +1,7 @@
 // The artifact card's branch decision, pure and unit-tested (v0.10): a table's
 // typeset render (.png) displays like a figure; CSVs — including legacy
 // inlineText bundles — NEVER inline. tex/data sources attach as quiet links.
-import type { ResultArtifact } from "./types";
+import type { BoardFile, ResultArtifact } from "./types";
 
 export interface ArtifactLink {
   label: string;
@@ -42,6 +42,18 @@ function links(art: ResultArtifact, assets: Record<string, string>): ArtifactLin
     out.push({ label: `data: ${base}`, url: data, download: base });
   }
   return out;
+}
+
+/** The one place a producedBy.script (a bundle-relative name like
+ * "scripts/02_clean.R") resolves to its snapshot BoardFile — suffix match,
+ * returning the exact payload path the ScriptViewer drawer keys on. Used by
+ * both the artifact card button and the provenance diagram (v0.11). */
+export function resolveScriptSnapshot(
+  producedBy: ResultArtifact["producedBy"],
+  scripts: BoardFile[],
+): BoardFile | null {
+  if (!producedBy?.script) return null;
+  return scripts.find((s) => s.path.endsWith("/" + producedBy.script)) ?? null;
 }
 
 export function artifactDisplay(

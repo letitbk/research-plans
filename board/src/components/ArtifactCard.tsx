@@ -1,5 +1,9 @@
 import type { ResultArtifact, ResultsBundle } from "../lib/types";
-import { artifactDisplay, type ArtifactLink } from "../lib/artifactDisplay";
+import {
+  artifactDisplay,
+  resolveScriptSnapshot,
+  type ArtifactLink,
+} from "../lib/artifactDisplay";
 import SafeTable from "./SafeTable";
 
 /** One artifact (figure / typeset table / download), reused inside a finding
@@ -21,9 +25,7 @@ export default function ArtifactCard({
   onZoom?: (url: string, title: string) => void;
 }) {
   const d = artifactDisplay(art, bundle.assets);
-  const scriptFile = art.producedBy
-    ? bundle.scripts.find((s) => s.path.endsWith("/" + art.producedBy!.script))
-    : null;
+  const scriptFile = resolveScriptSnapshot(art.producedBy, bundle.scripts);
 
   const zoomImg = (url: string) => (
     <img
@@ -68,6 +70,7 @@ export default function ArtifactCard({
     <div
       data-annot-scope={`artifact:${art.id}`}
       data-annot-section={`artifact ${art.id}: ${art.title}`}
+      data-artifact-card-id={art.id}
       className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-4"
     >
       <div className="mb-2 flex items-baseline gap-2">
