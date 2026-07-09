@@ -292,5 +292,163 @@ class TestDiscoverBroaden(unittest.TestCase):
             self.assertEqual(p.returncode, 1)
 
 
+class TestXlsxDiscovery(unittest.TestCase):
+    def test_discover_surfaces_xlsx(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            (root / "output" / "estimates.xlsx").write_bytes(b"PK fake xlsx")
+            p = run_cli(root, "discover")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            paths = [e["path"] for e in json.loads(p.stdout)]
+            self.assertIn("output/estimates.xlsx", paths)
+
+
+class TestTexDataFields(unittest.TestCase):
+    """Table artifacts may carry tex/data source files (v0.10) — finalize
+    requires them to exist in the staging dir when declared."""
+
+    def _staged_with_table(self, root, tex=True, data=True, declare=True):
+        p = run_cli(root, "stage", "--component", "02-analysis")
+        staging = Path(p.stdout.strip())
+        (root / "output" / "table1.png").write_bytes(b"\x89PNG table render")
+        (root / "output" / "table1.tex").write_text(
+            "\\begin{tabular}\\end{tabular}\n", encoding="utf-8")
+        sources = ["output/table1.png", "output/table1.csv", "output/table1.tex"]
+        p = run_cli(root, "copy", "--staging", str(staging),
+                    "--into", "artifacts", *sources)
+        recs = {Path(r["path"]).name: r for r in json.loads(p.stdout)}
+        art = {"id": "tbl", "kind": "table", "title": "T",
+               "file": "artifacts/table1.png",
+               "source": {"path": "output/table1.png",
+                          "sha256": recs["table1.png"]["sha256"],
+                          "bytes": recs["table1.png"]["bytes"],
+                          "oversized": False},
+               "producedBy": None}
+        if declare:
+            if tex:
+                art["tex"] = "artifacts/table1.tex"
+            if data:
+                art["data"] = "artifacts/table1.csv"
+        (staging / "manifest.json").write_text(
+            json.dumps(manifest_for(staging, entries=[art])), encoding="utf-8")
+        (staging / "report.md").write_text("# R\n", encoding="utf-8")
+        return staging
+
+    def test_finalize_accepts_present_tex_and_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged_with_table(root)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_finalize_rejects_missing_tex_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged_with_table(root)
+            (staging / "artifacts" / "table1.tex").unlink()
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("tex", p.stderr)
+
+    def test_finalize_rejects_missing_data_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged_with_table(root)
+            (staging / "artifacts" / "table1.csv").unlink()
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("data", p.stderr)
+
+
+VALID_VALIDATION = {
+    "status": "conforms-with-amendments",
+    "validatedAt": "2026-07-09 12:00",
+    "planVersion": 1,
+    "validator": "subagent",
+    "steps": [
+        {"planStep": "build panel", "verdict": "followed", "evidence": "03_model.R ran"},
+        {"planStep": "add controls", "verdict": "amended", "evidence": "v2 supersedes"},
+    ],
+    "criteria": [
+        {"criterion": "model converges", "verdict": "met", "evidence": "log line 40"},
+    ],
+    "notes": "",
+}
+
+
+class TestValidationBlock(unittest.TestCase):
+    def _staged(self, root, validation, write_validation_md):
+        p = run_cli(root, "stage", "--component", "02-analysis")
+        staging = Path(p.stdout.strip())
+        manifest = manifest_for(staging)
+        if validation is not None:
+            manifest["validation"] = validation
+        (staging / "manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8")
+        (staging / "report.md").write_text("# R\n", encoding="utf-8")
+        if write_validation_md:
+            (staging / "validation.md").write_text(
+                "# Validation\n\nconforms-with-amendments\n", encoding="utf-8")
+        return staging
+
+    def test_valid_block_with_validation_md_finalizes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged(root, VALID_VALIDATION, True)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_invalid_status_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged(root, {"status": "nonsense"}, True)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("status", p.stderr)
+
+    def test_invalid_step_verdict_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            bad = dict(VALID_VALIDATION,
+                       steps=[{"planStep": "x", "verdict": "sorta-did-it"}])
+            staging = self._staged(root, bad, True)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("verdict", p.stderr)
+
+    def test_real_verdict_requires_validation_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged(root, VALID_VALIDATION, False)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 1)
+            self.assertIn("validation.md", p.stderr)
+
+    def test_skipped_status_needs_no_validation_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged(
+                root, {"status": "skipped", "reason": "headless"}, False)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_absent_validation_still_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            staging = self._staged(root, None, False)
+            p = run_cli(root, "finalize", "--staging", str(staging))
+            self.assertEqual(p.returncode, 0, p.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
