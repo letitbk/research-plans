@@ -204,6 +204,27 @@ def main():
             % (res_m.group(2), res_m.group(1))
         )
 
+    # ---- Archived master plans are immutable (the renewal record). Pure file
+    # policy like the results branch — never opens a browser. Creation (the
+    # renewal's own archive write) is allowed; edits and overwrites are denied. ----
+    if p.parent.name == "archive" and p.parent.parent.name == "plans":
+        if os.environ.get("RESEARCH_PLANS_NO_GATE", "") == "1":
+            print(
+                "research-plans: archive immutability bypassed by "
+                "RESEARCH_PLANS_NO_GATE for %s" % p.name,
+                file=sys.stderr,
+            )
+            sys.exit(0)
+        if find_project_root(p) is None:
+            sys.exit(0)
+        if tool_name == "Edit" or p.exists():
+            deny(
+                "Archived master plans are immutable — %s is the record of a "
+                "direction this project renewed away from. /research-plans:renew "
+                "creates archives; nothing edits them." % p.name
+            )
+        sys.exit(0)
+
     # ---- Batch-approval ticket forgery guard. Tickets (.import-approved-*) are
     # written ONLY by board.py --gate-batch (a subprocess, outside the agent's
     # Write/Edit tools). A direct agent write here would forge sign-off — deny it
