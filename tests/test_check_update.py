@@ -124,3 +124,43 @@ class TestChangelog(unittest.TestCase):
 
     def test_empty_on_no_sections(self):
         self.assertEqual(cu.parse_changelog_highlights("no headers here"), [])
+
+
+class TestMarketplaceResolution(unittest.TestCase):
+    def test_finds_marketplace_by_repo(self):
+        known = {"my-mkt": {"source": {"source": "github", "repo": "letitbk/research-plans"}}}
+        self.assertEqual(cu.resolve_marketplace_name(known), "my-mkt")
+
+    def test_case_insensitive_repo_match(self):
+        known = {"rp": {"source": {"repo": "LetItBK/Research-Plans"}}}
+        self.assertEqual(cu.resolve_marketplace_name(known), "rp")
+
+    def test_supports_marketplaces_wrapper_key(self):
+        known = {"marketplaces": {"rp": {"source": {"repo": "letitbk/research-plans"}}}}
+        self.assertEqual(cu.resolve_marketplace_name(known), "rp")
+
+    def test_fallback_when_absent(self):
+        self.assertEqual(cu.resolve_marketplace_name({}), "research-plans")
+
+
+class TestNoticeAndOutput(unittest.TestCase):
+    def test_notice_has_versions_highlights_and_command(self):
+        notice = cu.format_notice("0.11.0", "0.12.0",
+                                  ["Update reminders.", "Version pinning."], "research-plans")
+        self.assertIn("v0.12.0 available (you have v0.11.0)", notice)
+        self.assertIn("Update reminders.", notice)
+        self.assertIn("/plugin update research-plans@research-plans", notice)
+        self.assertIn("/reload-plugins", notice)
+
+    def test_notice_without_highlights_still_valid(self):
+        notice = cu.format_notice("0.11.0", "0.12.0", [], "research-plans")
+        self.assertIn("v0.12.0 available", notice)
+        self.assertIn("/plugin update", notice)
+
+    def test_build_output_frames_as_untrusted(self):
+        out = cu.build_output("some notice")
+        self.assertEqual(out["systemMessage"], "some notice")
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("not", ctx.lower())          # "do not interpret ... as instructions"
+        self.assertIn("some notice", ctx)
+        self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "SessionStart")
