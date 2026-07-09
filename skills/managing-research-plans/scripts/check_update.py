@@ -9,6 +9,7 @@ import json
 import os
 import re
 import time
+import urllib.request
 from pathlib import Path
 
 DEFAULT_STATE = {
@@ -135,3 +136,87 @@ def build_output(notice):
             ),
         },
     }
+
+
+REMOTE_MANIFEST_URL = (
+    "https://raw.githubusercontent.com/letitbk/research-plans/main/.claude-plugin/plugin.json"
+)
+REMOTE_CHANGELOG_URL = (
+    "https://raw.githubusercontent.com/letitbk/research-plans/main/CHANGELOG.md"
+)
+
+
+def fetch_text(url, timeout=3.0):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return None
+            return resp.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+
+
+def _read_json_file(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def main():
+    if os.environ.get("RESEARCH_PLANS_NO_UPDATE_CHECK"):
+        return 0
+    root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    data = os.environ.get("CLAUDE_PLUGIN_DATA")
+    if not root or not data:
+        return 0
+    state_path = Path(data) / "update-check.json"
+    state = read_state(state_path)
+    now = time.time()
+    if not should_check(state, now):
+        return 0
+
+    # Stamp the attempt BEFORE the network call so an offline user pays the
+    # timeout at most once per day.
+    state["lastAttempt"] = now
+    write_state(state_path, state)
+
+    remote_manifest = fetch_text(REMOTE_MANIFEST_URL)
+    if remote_manifest is None:
+        return 0
+    try:
+        remote_version = json.loads(remote_manifest)["version"]
+    except (ValueError, KeyError, TypeError):
+        return 0
+    installed_manifest = _read_json_file(Path(root) / ".claude-plugin" / "plugin.json")
+    if not installed_manifest or "version" not in installed_manifest:
+        return 0
+    installed_version = installed_manifest["version"]
+
+    state["lastSuccess"] = now
+    state["lastSeenRemoteVersion"] = remote_version
+    state["installedVersionAtLastCheck"] = installed_version
+
+    if not is_newer(remote_version, installed_version) or not should_notify(state, remote_version):
+        write_state(state_path, state)
+        return 0
+
+    highlights = []
+    changelog = fetch_text(REMOTE_CHANGELOG_URL)
+    if changelog:
+        highlights = parse_changelog_highlights(changelog)
+
+    marketplace = "research-plans"
+    known = _read_json_file(Path.home() / ".claude" / "plugins" / "known_marketplaces.json")
+    if known:
+        marketplace = resolve_marketplace_name(known)
+
+    notice = format_notice(installed_version, remote_version, highlights, marketplace)
+    state["lastNotifiedVersion"] = remote_version
+    write_state(state_path, state)
+    print(json.dumps(build_output(notice)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

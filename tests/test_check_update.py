@@ -2,8 +2,10 @@
     python3 -m unittest tests.test_check_update -v
 """
 import json
+import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -164,3 +166,104 @@ class TestNoticeAndOutput(unittest.TestCase):
         self.assertIn("not", ctx.lower())          # "do not interpret ... as instructions"
         self.assertIn("some notice", ctx)
         self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "SessionStart")
+
+
+import io
+import contextlib
+
+
+class TestMain(unittest.TestCase):
+    def _run(self, env, fetch_map):
+        """Run main() with fetch_text stubbed and env overridden; return (rc, stdout)."""
+        real_fetch = cu.fetch_text
+        real_environ = dict(os.environ)
+        cu.fetch_text = lambda url, timeout=3.0: fetch_map.get(url)
+        os.environ.clear()
+        os.environ.update(env)
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = cu.main()
+        finally:
+            cu.fetch_text = real_fetch
+            os.environ.clear()
+            os.environ.update(real_environ)
+        return rc, buf.getvalue()
+
+    def _plugin_root(self, d, version):
+        root = Path(d) / "root"
+        (root / ".claude-plugin").mkdir(parents=True)
+        (root / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "research-plans", "version": version})
+        )
+        return root
+
+    MANIFEST_URL = "https://raw.githubusercontent.com/letitbk/research-plans/main/.claude-plugin/plugin.json"
+    CHANGELOG_URL = "https://raw.githubusercontent.com/letitbk/research-plans/main/CHANGELOG.md"
+
+    def test_notifies_when_newer_available(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.11.0")
+            data = Path(d) / "data"
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+            fetch = {
+                self.MANIFEST_URL: json.dumps({"version": "0.12.0"}),
+                self.CHANGELOG_URL: "## [0.12.0] - 2026-07-09\n- **New thing.** x\n",
+            }
+            rc, out = self._run(env, fetch)
+            self.assertEqual(rc, 0)
+            payload = json.loads(out)
+            self.assertIn("v0.12.0 available", payload["systemMessage"])
+            self.assertIn("New thing.", payload["systemMessage"])
+            state = cu.read_state(data / "update-check.json")
+            self.assertEqual(state["lastNotifiedVersion"], "0.12.0")
+
+    def test_silent_when_up_to_date(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.12.0")
+            data = Path(d) / "data"
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+            fetch = {self.MANIFEST_URL: json.dumps({"version": "0.12.0"})}
+            rc, out = self._run(env, fetch)
+            self.assertEqual(rc, 0)
+            self.assertEqual(out, "")
+
+    def test_no_second_notice_for_same_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.11.0")
+            data = Path(d) / "data"
+            cu.write_state(data / "update-check.json",
+                           dict(cu.DEFAULT_STATE, lastNotifiedVersion="0.12.0"))
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+            fetch = {self.MANIFEST_URL: json.dumps({"version": "0.12.0"})}
+            rc, out = self._run(env, fetch)
+            self.assertEqual(out, "")   # already notified for 0.12.0
+
+    def test_throttled_within_24h(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.11.0")
+            data = Path(d) / "data"
+            cu.write_state(data / "update-check.json",
+                           dict(cu.DEFAULT_STATE, lastAttempt=time.time()))
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+            # fetch map empty: if it tried to fetch it would get None anyway
+            rc, out = self._run(env, {})
+            self.assertEqual(out, "")
+
+    def test_opt_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.11.0")
+            data = Path(d) / "data"
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data),
+                   "RESEARCH_PLANS_NO_UPDATE_CHECK": "1"}
+            rc, out = self._run(env, {self.MANIFEST_URL: json.dumps({"version": "0.12.0"})})
+            self.assertEqual(out, "")
+
+    def test_offline_stamps_attempt_and_stays_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._plugin_root(d, "0.11.0")
+            data = Path(d) / "data"
+            env = {"CLAUDE_PLUGIN_ROOT": str(root), "CLAUDE_PLUGIN_DATA": str(data)}
+            rc, out = self._run(env, {})   # fetch returns None -> offline
+            self.assertEqual(out, "")
+            self.assertGreater(cu.read_state(data / "update-check.json")["lastAttempt"], 0)
