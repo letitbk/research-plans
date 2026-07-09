@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Markdown from "../components/Markdown";
+import ThemeToggle from "../components/ThemeToggle";
 import { parseExecutionPlan } from "../lib/parse";
 import type { BoardData } from "../lib/types";
 
@@ -118,6 +119,7 @@ export default function BatchGate({ data }: { data: BoardData }) {
         <span className="text-sm text-stone-500">
           plan {idx + 1} of {plans.length}
         </span>
+        <ThemeToggle />
         <span className="ml-auto flex items-center gap-2 text-xs">
           <span className="rounded bg-green-50 dark:bg-green-950 px-2 py-0.5 font-medium text-green-800 dark:text-green-300">
             {approvedCount} approved
