@@ -10,6 +10,7 @@ const masterPlan = `<!-- research-plans:master-plan -->
 
 Last updated: 2026-07-02
 Initialized: 2026-06-28 09:15
+Renewed: 2026-07-02 — pivot from panel attrition to cross-national variation
 
 ## Project context
 
@@ -32,6 +33,67 @@ The hard constraint is the deadline: end of July 2026.
 | 4 | Regression modeling | not started | — | — | RQ2 |
 
 Statuses: \`not started\` / \`planned\` / \`in progress\` / \`done\` / \`dropped\`.
+
+## Foundations
+
+Renewed 2026-07-02 from archive/master-plan-2026-07-02.md. Carried: data acquisition, data cleaning. Not carried: 09-attrition-pilot (superseded by the new direction) — its plans and results remain browsable.
+`;
+
+const archivedMasterPlan = `<!-- research-plans:master-plan -->
+# Immigration Attitudes (panel attrition) — Master Plan
+
+Last updated: 2026-07-01
+Initialized: 2026-06-28 09:15
+
+## Project context
+
+The original direction: panel attrition in immigration-attitude items (${MARKER}).
+
+### Research questions
+
+1. RQ1: Does item nonresponse on immigration attitudes predict panel attrition?
+
+## Components
+
+| # | Component | Status | Execution plan | Outcome / notes | Serves |
+|---|-----------|--------|----------------|-----------------|--------|
+| 1 | Data acquisition | done | — | ISSP sample in repo | — |
+| 9 | Attrition pilot | done | [v1](execution/09-attrition-pilot/v1.md) | dead end — pivoted | RQ1 |
+`;
+
+const attritionPilotV1 = `# Attrition Pilot — Execution Plan v1
+
+Component: \`09-attrition-pilot\` · Master plan: [master-plan.md](../../master-plan.md) · Date: 2026-06-29
+
+## Goal and success criteria
+
+Serves: RQ1
+
+Pilot whether item nonresponse predicts attrition.
+
+## Context
+
+Pre-renewal exploratory component; superseded by the cross-national pivot.
+
+## Approach
+
+Logit of wave-2 dropout on wave-1 item nonresponse.
+
+## Build steps
+
+1. Build the dropout indicator.
+2. Fit the logit.
+
+## Verification
+
+Researcher reviews the coefficient table.
+
+## Out of scope
+
+Any cross-national comparison.
+
+---
+Signed off: Jane Doe, 2026-06-29
 `;
 
 const decisionLog = `# Decision Log
@@ -507,6 +569,37 @@ const cleaningResults = [
       capturedAt: "2026-07-02 10:30",
       late: true,
       summary: "Cleaning pipeline output under plan v2 (backfilled)",
+      validation: {
+        status: "conforms-with-amendments" as const,
+        validatedAt: "2026-07-02 10:31",
+        planVersion: 2,
+        validator: "subagent",
+        steps: [
+          {
+            planStep: "recode missing values",
+            verdict: "followed" as const,
+            evidence: "02_clean.R lines 4-5; 431 rows in the cleaning log",
+          },
+          {
+            planStep: "drop duplicate household IDs",
+            verdict: "amended" as const,
+            evidence: "exact-duplicates-only rule recorded in plan v2 (Supersedes v1)",
+          },
+          {
+            planStep: "write cleaning log",
+            verdict: "not-executed" as const,
+            evidence: "no cleaning-log file among the outputs",
+          },
+        ],
+        criteria: [
+          {
+            criterion: "documented analysis sample with exclusion counts",
+            verdict: "met" as const,
+            evidence: "exclusions.csv rows match the report",
+          },
+        ],
+        notes: "The missing cleaning log is cosmetic; counts live in exclusions.csv.",
+      },
       metrics: [
         { label: "Rows", value: "66,864", note: "analytic sample" },
         { label: "Dupes dropped", value: "214" },
@@ -523,6 +616,26 @@ const cleaningResults = [
             path: "output/figures/fig-support.svg",
             sha256: "d".repeat(64),
             bytes: 4210,
+            oversized: false,
+          },
+          producedBy: {
+            script: "scripts/02_clean.R",
+            sourcePath: "code/02_clean.R",
+            lang: "r",
+          },
+        },
+        {
+          id: "tab-model",
+          kind: "table" as const,
+          title: "Table 1. Support for immigration",
+          caption: "Typeset render; .tex source and estimates CSV attached.",
+          file: "artifacts/table1.png",
+          tex: "artifacts/table1.tex",
+          data: "artifacts/table1.csv",
+          source: {
+            path: "output/tables/table1.png",
+            sha256: "a".repeat(64),
+            bytes: 20480,
             oversized: false,
           },
           producedBy: {
@@ -579,7 +692,12 @@ const cleaningResults = [
           "library(dplyr)\n\nraw <- read_issp('data/raw')\nclean <- raw |>\n  filter(!is.na(support)) |>\n  mutate(support = na_if(support, 97), support = na_if(support, 98)) |>\n  distinct(hh_id, .keep_all = TRUE)\n\nwrite_csv(count_exclusions(raw, clean), 'output/tables/exclusions.csv')\nggsave('output/figures/fig-support.svg', plot_support(clean))\n",
       },
     ],
-    assets: { "fig-support.svg": FIG_SVG },
+    assets: {
+      "fig-support.svg": FIG_SVG,
+      "table1.png": FIG_SVG,
+      "table1.tex": "data:text/plain;base64,JXRhYmxlMQ==",
+      "table1.csv": "data:text/csv;base64,YSxiCjEsMg==",
+    },
   },
 ];
 
@@ -758,6 +876,13 @@ export const devData: BoardData = {
         },
         results: descriptivesResults,
       },
+      {
+        component: "09-attrition-pilot",
+        versions: [
+          { version: 1, path: "plans/execution/09-attrition-pilot/v1.md", content: attritionPilotV1 },
+        ],
+        results: [],
+      },
     ],
     reviews: [
       { path: "plans/reviews/02-data-cleaning-v2.md", content: review },
@@ -765,5 +890,12 @@ export const devData: BoardData = {
       { path: "plans/reviews/04-regression-v1.md", content: reviewV2Fail },
     ],
     history: { path: "plans/history.md", content: history },
+    archives: [
+      {
+        path: "plans/archive/master-plan-2026-07-02.md",
+        content: archivedMasterPlan,
+        archivedOn: "2026-07-02",
+      },
+    ],
   },
 };

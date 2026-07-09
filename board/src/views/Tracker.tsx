@@ -17,6 +17,8 @@ import {
   parseHistory,
   parseMasterPlan,
   parseServes,
+  preRenewalSlugs,
+  slugFromLink,
 } from "../lib/parse";
 
 const CHIP: Record<TrackerStatus, string> = {
@@ -29,11 +31,6 @@ const CHIP: Record<TrackerStatus, string> = {
   unknown: "bg-stone-100 text-stone-500 border-stone-200",
 };
 
-function slugFromLink(link: string): string | null {
-  const m = /execution\/([^/)]+)\//.exec(link);
-  return m ? m[1] : null;
-}
-
 export default function Tracker({
   data,
   canAnnotate,
@@ -45,6 +42,7 @@ export default function Tracker({
   onAddGeneral,
   canPost,
   onRequestReview,
+  onOpenArchive,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -60,6 +58,7 @@ export default function Tracker({
   onAddGeneral: (view: string, comment: string) => void;
   canPost?: boolean;
   onRequestReview?: (req: ReviewRequest) => void;
+  onOpenArchive?: () => void;
 }) {
   const mp = parseMasterPlan(data.files.masterPlan.content);
 
@@ -96,8 +95,15 @@ export default function Tracker({
       .map((r) => slugFromLink(r.planLink))
       .filter((s): s is string => s !== null),
   );
+  // Execution dirs the current tracker does not list: components moved to an
+  // archived master plan by a renewal are expected (quiet badge, never Drift);
+  // the rest are true orphans (red Drift, as before).
+  const preRenewal = preRenewalSlugs(data);
   const orphanGroups = data.files.executionPlans.filter(
-    (g) => !linkedSlugs.has(g.component),
+    (g) => !linkedSlugs.has(g.component) && !preRenewal.has(g.component),
+  );
+  const preRenewalGroups = data.files.executionPlans.filter(
+    (g) => !linkedSlugs.has(g.component) && preRenewal.has(g.component),
   );
 
   const counts = mp.components.reduce<Record<string, number>>((acc, r) => {
@@ -194,6 +200,12 @@ export default function Tracker({
           slug: slug ?? undefined,
         });
       }
+      if (latestResult?.manifest?.validation?.status === "deviations-found") {
+        drift.push({
+          text: `${r.component}: validation found unrecorded deviations in r${latestResult.resultsVersion}`,
+          slug: slug ?? undefined,
+        });
+      }
       const latestV = g.versions[g.versions.length - 1];
       if (r.status === "in progress" && latestV) {
         const prov = parseExecutionPlan(latestV.content).provenance;
@@ -266,6 +278,20 @@ export default function Tracker({
       <div className="mb-1 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-stone-900">{mp.title}</h1>
         <div className="flex items-center gap-3">
+          {mp.renewed && (
+            <span className="text-xs text-stone-500">
+              renewed {mp.renewed.date}
+              {mp.renewed.reason ? ` — ${mp.renewed.reason}` : ""}
+              {onOpenArchive && (
+                <button
+                  className="ml-1.5 font-medium text-blue-700 underline hover:text-blue-900"
+                  onClick={onOpenArchive}
+                >
+                  archived plan
+                </button>
+              )}
+            </span>
+          )}
           {mp.lastUpdated && (
             <span className="text-xs text-stone-500">
               Last updated {mp.lastUpdated}
@@ -467,6 +493,27 @@ export default function Tracker({
         </div>
       )}
 
+      {preRenewalGroups.length > 0 && (
+        <div
+          className="mt-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600"
+          data-annot-scope="pre-renewal"
+          data-annot-section="pre-renewal components"
+        >
+          Pre-renewal: component{preRenewalGroups.length > 1 ? "s" : ""} from an
+          archived master plan —{" "}
+          {preRenewalGroups.map((g, i) => (
+            <button
+              key={g.component}
+              className="font-medium underline"
+              onClick={() => onOpenComponent(g.component, g.component)}
+            >
+              {g.component}
+              {i < preRenewalGroups.length - 1 ? ", " : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
       {drift.length > 0 && (
         <div
           className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
@@ -493,6 +540,19 @@ export default function Tracker({
             ))}
           </ul>
         </div>
+      )}
+
+      {mp.foundationsMd && (
+        <section
+          className="mt-4 rounded-lg border border-stone-200 bg-white p-4"
+          data-annot-scope="foundations"
+          data-annot-section="Foundations"
+        >
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">
+            Foundations
+          </h2>
+          <Markdown source={mp.foundationsMd} className="text-sm" />
+        </section>
       )}
 
       {mp.sequencingMd && (

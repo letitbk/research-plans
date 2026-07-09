@@ -32,7 +32,7 @@ SCAN_DIRS = ["output", "outputs", "figures", "figs", "plots", "viz", "visuals",
              "graphics", "tables", "results", "reports"]
 SCAN_EXTS = {
     ".png", ".jpg", ".jpeg", ".svg", ".gif", ".pdf",
-    ".csv", ".tsv", ".html", ".md", ".txt", ".tex", ".json",
+    ".csv", ".tsv", ".html", ".md", ".txt", ".tex", ".json", ".xlsx",
 }
 SKIP_DIRS = {".git", "node_modules", "plans", "__pycache__"}
 R_RE = re.compile(r"^r(\d+)$")
@@ -164,6 +164,11 @@ def cmd_copy(root, args):
 
 
 _METRIC_STATUSES = {"robust", "marginal", "descriptive", "retracted", "superseded"}
+_VALIDATION_STATUSES = {"conforms", "conforms-with-amendments", "deviations-found",
+                        "unverifiable", "not-applicable", "skipped"}
+_STEP_VERDICTS = {"followed", "amended", "deviated-unrecorded", "not-executed",
+                  "unverifiable"}
+_CRITERION_VERDICTS = {"met", "not-met", "partial", "unverifiable"}
 
 
 def validate_staged(staging):
@@ -194,6 +199,12 @@ def validate_staged(staging):
         pb = art.get("producedBy")
         if pb and pb.get("script") and not (staging / pb["script"]).is_file():
             return None, "script snapshot missing: %s" % pb["script"]
+        # v0.10: a table artifact may attach its .tex source and estimates CSV
+        for key in ("tex", "data"):
+            rel = art.get(key)
+            if rel and not (staging / rel).is_file():
+                return None, "artifact %s %s file missing in staging: %s" % (
+                    art.get("id"), key, rel)
     # metrics are findings: validate optional status enum + artifactId refs
     art_ids = {a.get("id") for a in manifest["artifacts"]}
     for mt in manifest.get("metrics", []):
@@ -204,6 +215,25 @@ def validate_staged(staging):
             if aid not in art_ids:
                 return None, "metric %r references unknown artifactId: %s" % (
                     mt.get("label"), aid)
+    # v0.10: optional plan-vs-execution validation block (absent = old bundle, valid)
+    val = manifest.get("validation")
+    if val is not None:
+        if not isinstance(val, dict) or val.get("status") not in _VALIDATION_STATUSES:
+            return None, "manifest validation block has invalid status: %r" % (
+                val.get("status") if isinstance(val, dict) else val)
+        for st in val.get("steps") or []:
+            if st.get("verdict") not in _STEP_VERDICTS:
+                return None, "validation step %r has invalid verdict: %s" % (
+                    st.get("planStep"), st.get("verdict"))
+        for cr in val.get("criteria") or []:
+            if cr.get("verdict") not in _CRITERION_VERDICTS:
+                return None, "validation criterion %r has invalid verdict: %s" % (
+                    cr.get("criterion"), cr.get("verdict"))
+        if val["status"] in ("conforms", "conforms-with-amendments",
+                             "deviations-found", "unverifiable") and not (
+                staging / "validation.md").is_file():
+            return None, ("validation.md missing while manifest.validation "
+                          "status is %s" % val["status"])
     return manifest, None
 
 

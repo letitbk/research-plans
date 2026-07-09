@@ -5,6 +5,7 @@ import type {
   Annotation,
   BoardData,
   DocCommentAnnotation,
+  ReportRequest,
   ReviewRequest,
   VerdictRequest,
 } from "./types";
@@ -20,6 +21,7 @@ export interface FeedbackMeta {
   annotations: Annotation[];
   verdict?: VerdictRequest | null;
   reviewRequest?: ReviewRequest | null; // agent plan review (v0.9)
+  reportRequest?: ReportRequest | null; // per-bundle report generation (v0.10)
 }
 
 export function newSessionId(): string {
@@ -49,16 +51,26 @@ export const VIEW_LABEL: Record<DocCommentAnnotation["view"], string> = {
   tracker: "Tracker",
   timeline: "Timeline",
   reviews: "Reviews",
+  archive: "Archive",
 };
 
 export function buildFeedbackMarkdown(
   annotations: Annotation[],
   verdict: VerdictRequest | null,
   reviewRequest?: ReviewRequest | null,
+  reportRequest?: ReportRequest | null,
 ): string {
-  if (annotations.length === 0 && !verdict && !reviewRequest)
+  if (annotations.length === 0 && !verdict && !reviewRequest && !reportRequest)
     return "# Board Feedback\n\nNo feedback.";
   const lines: string[] = ["# Board Feedback", ""];
+  if (reportRequest) {
+    lines.push(
+      `## REPORT REQUEST: ${reportRequest.component} r${reportRequest.resultsVersion}`,
+      "",
+      "Generate the shareable report for this bundle (markdown always; PDF/DOCX via pandoc), save it under plans/reports/, then offer to reopen the board.",
+      "",
+    );
+  }
   if (reviewRequest) {
     const t =
       reviewRequest.scope === "plan"

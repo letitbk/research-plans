@@ -82,9 +82,11 @@ export function parseMasterPlan(raw: string): ParsedMasterPlan {
     ok: false,
     title: "Master Plan",
     lastUpdated: null,
+    renewed: null,
     contextMd: "",
     researchQuestions: [],
     components: [],
+    foundationsMd: null,
     sequencingMd: null,
     raw,
   };
@@ -92,6 +94,12 @@ export function parseMasterPlan(raw: string): ParsedMasterPlan {
     const title = /^# (.+)$/m.exec(raw)?.[1]?.trim() ?? "Master Plan";
     const lastUpdated =
       /^Last updated:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
+    // v0.10: a renewal stamp. The template's placeholder has no real date, so
+    // it (and every pre-v0.10 plan) parses to null.
+    const renewedM = /^Renewed:\s*(\d{4}-\d{2}-\d{2})\s*(?:[—–-]\s*(.*))?$/m.exec(raw);
+    const renewed = renewedM
+      ? { date: renewedM[1], reason: (renewedM[2] ?? "").trim() }
+      : null;
     const contextBody = sectionBody(raw, "Project context") ?? "";
     const { contextMd, researchQuestions } =
       extractResearchQuestions(contextBody);
@@ -117,19 +125,54 @@ export function parseMasterPlan(raw: string): ParsedMasterPlan {
       },
     );
     const sequencingMd = sectionBody(raw, "Sequencing notes");
+    const foundationsMd = sectionBody(raw, "Foundations");
     return {
       ok: true,
       title,
       lastUpdated,
+      renewed,
       contextMd,
       researchQuestions,
       components,
+      foundationsMd,
       sequencingMd,
       raw,
     };
   } catch {
     return fail;
   }
+}
+
+/** Execution slug from a tracker Plan-link cell, e.g. "[v1](execution/01-x/v1.md)". */
+export function slugFromLink(link: string): string | null {
+  const m = /execution\/([^/)]+)\//.exec(link);
+  return m ? m[1] : null;
+}
+
+/** Slugs of execution groups that belong to an ARCHIVED master plan: not
+ * referenced by the current master plan's content but referenced by some
+ * archive's content. Pre-renewal work — browsable, never nagged about. */
+export function preRenewalSlugs(data: {
+  files: {
+    masterPlan: { content: string };
+    archives?: { content: string }[];
+    executionPlans: { component: string }[];
+  };
+}): Set<string> {
+  const archives = data.files.archives ?? [];
+  const out = new Set<string>();
+  if (archives.length === 0) return out;
+  const master = data.files.masterPlan.content;
+  for (const g of data.files.executionPlans) {
+    const marker = `execution/${g.component}/`;
+    if (
+      !master.includes(marker) &&
+      archives.some((a) => a.content.includes(marker))
+    ) {
+      out.add(g.component);
+    }
+  }
+  return out;
 }
 
 /**
@@ -350,6 +393,7 @@ export function allFiles(data: {
     }[];
     reviews: { path: string; content: string }[];
     history?: { path: string; content: string };
+    archives?: { path: string; content: string }[];
   };
 }): { path: string; content: string }[] {
   const out = [data.files.masterPlan, data.files.decisionLog];
@@ -367,5 +411,7 @@ export function allFiles(data: {
   out.push(...data.files.reviews);
   // Present-only: a project without history keeps a byte-identical hash.
   if (data.files.history) out.push(data.files.history);
+  // Present-only, same rule: archived master plans (v0.10 renewal record).
+  out.push(...(data.files.archives ?? []));
   return out;
 }

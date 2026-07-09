@@ -1,16 +1,12 @@
 import type { ResultArtifact, ResultsBundle } from "../lib/types";
+import { artifactDisplay, type ArtifactLink } from "../lib/artifactDisplay";
 import SafeTable from "./SafeTable";
 
-function tableKind(art: ResultArtifact): "html" | "md" | "csv" {
-  const f = (art.file ?? "").toLowerCase();
-  if (f.endsWith(".html")) return "html";
-  if (f.endsWith(".md")) return "md";
-  return "csv";
-}
-
-/** One artifact (figure / table / download), reused inside a finding block and
- * in the "Additional evidence" section. Figures call onZoom to open a lightbox;
- * the "produced by" button toggles the shared ScriptViewer drawer via openScript. */
+/** One artifact (figure / typeset table / download), reused inside a finding
+ * block and in the "Additional evidence" section. All branch logic lives in
+ * lib/artifactDisplay (pure, unit-tested); this component only renders the
+ * decision. Figures AND table renders zoom via onZoom; the "produced by"
+ * button toggles the shared ScriptViewer drawer via openScript. */
 export default function ArtifactCard({
   art,
   bundle,
@@ -24,11 +20,50 @@ export default function ArtifactCard({
   setOpenScript: (s: string | null) => void;
   onZoom?: (url: string, title: string) => void;
 }) {
-  const basename = art.file ? art.file.split("/").pop()! : null;
-  const url = basename ? bundle.assets[basename] : null;
+  const d = artifactDisplay(art, bundle.assets);
   const scriptFile = art.producedBy
     ? bundle.scripts.find((s) => s.path.endsWith("/" + art.producedBy!.script))
     : null;
+
+  const zoomImg = (url: string) => (
+    <img
+      src={url}
+      alt={art.title}
+      role={onZoom ? "button" : undefined}
+      tabIndex={onZoom ? 0 : undefined}
+      onClick={onZoom ? () => onZoom(url, art.title) : undefined}
+      onKeyDown={
+        onZoom
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onZoom(url, art.title);
+              }
+            }
+          : undefined
+      }
+      className={`max-h-80 w-full rounded border border-stone-100 object-contain${
+        onZoom ? " cursor-zoom-in" : ""
+      }`}
+    />
+  );
+
+  const linksRow = (links: ArtifactLink[]) =>
+    links.length > 0 ? (
+      <div className="mt-1.5 flex flex-wrap gap-3">
+        {links.map((l) => (
+          <a
+            key={l.label}
+            href={l.url}
+            download={l.download}
+            className="text-[11px] font-medium text-blue-700 underline"
+          >
+            {l.label}
+          </a>
+        ))}
+      </div>
+    ) : null;
+
   return (
     <div
       data-annot-scope={`artifact:${art.id}`}
@@ -41,42 +76,36 @@ export default function ArtifactCard({
           {art.kind}
         </span>
       </div>
-      {art.source.oversized ? (
+      {d.mode === "oversized" ? (
         <div className="rounded border border-dashed border-stone-300 p-6 text-center text-xs text-stone-500">
           Too large to snapshot ({Math.round(art.source.bytes / 1024 / 1024)} MB)
           — original at <code>{art.source.path}</code>
         </div>
-      ) : art.kind === "table" && art.inlineText ? (
-        <SafeTable content={art.inlineText} kind={tableKind(art)} />
-      ) : art.kind === "figure" && url ? (
-        <img
-          src={url}
-          alt={art.title}
-          role={onZoom ? "button" : undefined}
-          tabIndex={onZoom ? 0 : undefined}
-          onClick={onZoom ? () => onZoom(url, art.title) : undefined}
-          onKeyDown={
-            onZoom
-              ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onZoom(url, art.title);
-                  }
-                }
-              : undefined
-          }
-          className={`max-h-80 w-full rounded border border-stone-100 object-contain${
-            onZoom ? " cursor-zoom-in" : ""
-          }`}
-        />
-      ) : url ? (
-        <a
-          href={url}
-          download={basename ?? undefined}
-          className="text-xs font-medium text-blue-700 underline"
-        >
-          download {basename}
-        </a>
+      ) : d.mode === "table-image" ? (
+        <>
+          {zoomImg(d.url)}
+          {linksRow(d.links)}
+        </>
+      ) : d.mode === "table-inline" ? (
+        <>
+          <SafeTable content={art.inlineText!} kind={d.kind} />
+          {linksRow(d.links)}
+        </>
+      ) : d.mode === "figure" ? (
+        zoomImg(d.url)
+      ) : d.mode === "card" ? (
+        <>
+          {d.url && (
+            <a
+              href={d.url}
+              download={d.basename ?? undefined}
+              className="text-xs font-medium text-blue-700 underline"
+            >
+              open {d.basename}
+            </a>
+          )}
+          {linksRow(d.links)}
+        </>
       ) : (
         <div className="text-xs text-stone-400">no snapshot file</div>
       )}

@@ -31,12 +31,18 @@ export interface BoardData {
     executionPlans: ExecutionPlanGroup[];
     reviews: BoardFile[];
     history?: BoardFile; // reconstructed pre-adoption history; present only when it exists
+    archives?: ArchiveFile[]; // archived master plans (v0.10 renewal); present-only
   };
 }
 
 export interface BoardFile {
   path: string;
   content: string;
+}
+
+// An archived master plan under plans/archive/ — immutable renewal record.
+export interface ArchiveFile extends BoardFile {
+  archivedOn?: string; // YYYY-MM-DD from the filename
 }
 
 export interface GateBatchEntry {
@@ -92,6 +98,39 @@ export interface ResultsManifest {
     artifactIds?: string[]; // artifact ids embedded under this finding
   }[];
   artifacts: ResultArtifact[];
+  validation?: ValidationBlock; // v0.10: plan-vs-execution audit, sealed at capture
+}
+
+// Independent-subagent audit of the bundle against its signed plan (v0.10).
+// Advisory — never a gate; absent on pre-v0.10 bundles.
+export interface ValidationBlock {
+  status:
+    | "conforms"
+    | "conforms-with-amendments"
+    | "deviations-found"
+    | "unverifiable"
+    | "not-applicable"
+    | "skipped";
+  validatedAt?: string;
+  planVersion?: number | null;
+  validator?: string;
+  steps?: {
+    planStep: string;
+    verdict:
+      | "followed"
+      | "amended"
+      | "deviated-unrecorded"
+      | "not-executed"
+      | "unverifiable";
+    evidence?: string;
+  }[];
+  criteria?: {
+    criterion: string;
+    verdict: "met" | "not-met" | "partial" | "unverifiable";
+    evidence?: string;
+  }[];
+  notes?: string;
+  reason?: string; // for not-applicable / skipped / unverifiable
 }
 
 export interface ResultArtifact {
@@ -100,7 +139,8 @@ export interface ResultArtifact {
   title: string;
   caption?: string;
   file: string | null;
-  data?: string | null;
+  data?: string | null; // the estimates CSV behind a table (bundle-relative)
+  tex?: string | null; // the .tex source of a typeset table (bundle-relative, v0.10)
   inlineText?: string;
   source: { path: string; sha256: string; bytes: number; oversized: boolean };
   producedBy: {
@@ -154,9 +194,11 @@ export interface ParsedMasterPlan {
   ok: boolean;
   title: string;
   lastUpdated: string | null;
+  renewed: { date: string; reason: string } | null; // v0.10 Renewed: line
   contextMd: string; // Research questions subsection stripped out
   researchQuestions: ResearchQuestion[];
   components: TrackerRow[];
+  foundationsMd: string | null; // v0.10 Foundations section (post-renewal)
   sequencingMd: string | null;
   raw: string;
 }
@@ -288,6 +330,13 @@ export interface ReviewRequest {
   isDraft?: boolean;
 }
 
+// Rides the feedback fence like ReviewRequest: the Generate report button
+// submits it, the session runs /research-plans:report on the bundle (v0.10).
+export interface ReportRequest {
+  component: string;
+  resultsVersion: number;
+}
+
 // A reviewer's comment before browser anchoring. board.py --seed-annotations
 // injects a list of these; App turns each into a pending annotation keyed by
 // `scope`: plan → PlanCommentAnnotation, master → DocCommentAnnotation (tracker),
@@ -312,8 +361,8 @@ export interface SeededAnnotation {
 export interface DocCommentAnnotation {
   id: string;
   type: "doc-comment";
-  view: "tracker" | "timeline" | "reviews";
-  docKey: string; // "tracker" | "timeline" | review file payload path
+  view: "tracker" | "timeline" | "reviews" | "archive";
+  docKey: string; // "tracker" | "timeline" | review file payload path | "archive:<path>"
   scope: string; // data-annot-scope id, "" when selection was outside stamps
   quote: string;
   prefix: string;

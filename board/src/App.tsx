@@ -4,6 +4,7 @@ import PlanReader from "./views/PlanReader";
 import Results from "./views/Results";
 import Timeline from "./views/Timeline";
 import Scorecard from "./views/Scorecard";
+import Archive from "./views/Archive";
 import BatchGate from "./views/BatchGate";
 import { allFiles, payloadContentHash } from "./lib/parse";
 import {
@@ -18,6 +19,7 @@ import type {
   BoardData,
   DocCommentAnnotation,
   PlanCommentAnnotation,
+  ReportRequest,
   ResultCommentAnnotation,
   ReviewRequest,
   ScriptCommentAnnotation,
@@ -25,7 +27,7 @@ import type {
   VerdictRequest,
 } from "./lib/types";
 
-type Tab = "tracker" | "plans" | "results" | "timeline" | "reviews";
+type Tab = "tracker" | "plans" | "results" | "timeline" | "reviews" | "archive";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "tracker", label: "Tracker" },
@@ -462,6 +464,49 @@ export default function App({ data }: { data: BoardData }) {
     }
   };
 
+  // Generate report (v0.10): same channel and lifecycle as requestReview —
+  // submit ends the board session; the session runs /research-plans:report
+  // and offers to reopen. Pending manual comments ride along.
+  const requestReport = async (req: ReportRequest) => {
+    const md = buildFeedbackMarkdown(annotations, pendingVerdict, undefined, req);
+    const doc = buildFeedbackDocument(md, {
+      sessionId,
+      generatedAt: data.generatedAt,
+      mode: data.mode,
+      focus: data.focus,
+      reviewer: remote ? reviewer.trim() || "anonymous reviewer" : null,
+      payloadHash,
+      shareHash: data.shareHash ?? null,
+      annotations,
+      verdict: pendingVerdict,
+      reportRequest: req,
+    });
+    setSubmitState("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          annotations,
+          feedbackMarkdown: md,
+          payloadHash,
+          feedbackDocument: doc,
+          reportRequest: req,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSubmitState("sent");
+      setPendingVerdict(null);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+    } catch {
+      setSubmitState("failed");
+    }
+  };
+
   const copyFallback = async () => {
     try {
       await navigator.clipboard.writeText(feedbackDocument);
@@ -525,7 +570,10 @@ export default function App({ data }: { data: BoardData }) {
             </div>
           </div>
           <nav className="ml-4 flex gap-1">
-            {TABS.map((t) => (
+            {(data.files.archives?.length
+              ? [...TABS, { id: "archive" as Tab, label: "Archive" }]
+              : TABS
+            ).map((t) => (
               <button
                 key={t.id}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium ${
@@ -598,6 +646,9 @@ export default function App({ data }: { data: BoardData }) {
             }}
             canPost={canPost}
             onRequestReview={requestReview}
+            onOpenArchive={
+              data.files.archives?.length ? () => setTab("archive") : undefined
+            }
           />
         )}
         {tab === "plans" && (
@@ -631,6 +682,25 @@ export default function App({ data }: { data: BoardData }) {
             onVerdict={onVerdict}
             focusResults={data.focusResults ?? null}
             onRequestReview={requestReview}
+            onRequestReport={requestReport}
+          />
+        )}
+        {tab === "archive" && (
+          <Archive
+            data={data}
+            canAnnotate={canAnnotate}
+            annotations={annotations}
+            onAddDocComment={addDocComment}
+            onPaintResult={onPaintResult}
+            onAddGeneral={addGeneral}
+            onOpenComponent={(slug) => {
+              setSelectedComponent(slug);
+              setTab("plans");
+            }}
+            onOpenResults={(slug) => {
+              setSelectedComponent(slug);
+              setTab("results");
+            }}
           />
         )}
         {tab === "timeline" && (

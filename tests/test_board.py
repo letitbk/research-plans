@@ -78,6 +78,41 @@ def make_project(root: Path):
     return plans
 
 
+def add_archive(root: Path):
+    """A renewed project: an archived master plan whose tracker links a legacy
+    component that the CURRENT master plan does not list, plus that component's
+    dir with a drifted bundle (its source file never existed on disk)."""
+    plans = root / "plans"
+    arch = plans / "archive"
+    arch.mkdir()
+    (arch / "master-plan-2026-07-01.md").write_text(
+        "<!-- research-plans:master-plan -->\n"
+        "# Test Project — Master Plan\n\n"
+        "## Components\n\n"
+        "| # | Component | Status | Execution plan | Outcome / notes | Serves |\n"
+        "|---|-----------|--------|----------------|-----------------|--------|\n"
+        "| 9 | Legacy | done | [v1](execution/09-legacy/v1.md) | — | — |\n",
+        encoding="utf-8",
+    )
+    legacy = plans / "execution" / "09-legacy"
+    legacy.mkdir(parents=True)
+    (legacy / "v1.md").write_text("# Legacy v1\n\nOld work.\n", encoding="utf-8")
+    r1 = legacy / "results" / "r1"
+    (r1 / "artifacts").mkdir(parents=True)
+    (r1 / "report.md").write_text("# Legacy r1\n", encoding="utf-8")
+    (r1 / "manifest.json").write_text(json.dumps({
+        "schemaVersion": 1, "component": "09-legacy", "resultsVersion": 1,
+        "planVersion": 1, "provenance": "planned", "trigger": "initial",
+        "capturedAt": "2026-06-01 10:00", "metrics": [],
+        "artifacts": [{"id": "old", "kind": "figure", "title": "Old fig",
+                       "file": None,
+                       "source": {"path": "output/gone.png", "sha256": "0" * 64,
+                                  "bytes": 1, "oversized": True},
+                       "producedBy": None}],
+    }), encoding="utf-8")
+    return arch
+
+
 def run_board(cwd, *argv):
     return subprocess.run(
         [sys.executable, str(BOARD), *argv],
@@ -571,6 +606,83 @@ class TestDrift(unittest.TestCase):
             root = Path(tmp)
             make_project(root)
             self.assertNotIn("drift", board.collect_payload(root, "remote", None))
+
+
+class TestArchives(unittest.TestCase):
+    def test_archives_collected_present_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            # without archives: key absent (hash stability for old projects)
+            payload = board.collect_payload(root, "live", None)
+            self.assertNotIn("archives", payload["files"])
+            add_archive(root)
+            payload = board.collect_payload(root, "live", None)
+            archs = payload["files"]["archives"]
+            self.assertEqual(archs[0]["path"],
+                             "plans/archive/master-plan-2026-07-01.md")
+            self.assertEqual(archs[0]["archivedOn"], "2026-07-01")
+
+    def test_payload_files_include_archives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            add_archive(root)
+            payload = board.collect_payload(root, "live", None)
+            paths = [f["path"] for f in board.payload_files(payload)]
+            self.assertIn("plans/archive/master-plan-2026-07-01.md", paths)
+
+    def test_focused_share_omits_archives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            add_archive(root)
+            focused = board.collect_payload(root, "remote", "01-data-prep")
+            self.assertNotIn("archives", focused["files"])
+            unfocused = board.collect_payload(root, "remote", None)
+            self.assertIn("archives", unfocused["files"])
+
+    def test_drift_skips_archived_only_components(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            add_archive(root)
+            drift = board.collect_payload(root, "live", None)["drift"]
+            # 09-legacy is linked only in the archive → never nagged about
+            self.assertNotIn("09-legacy", drift["sourceDrift"])
+            # 01-data-prep is in the current tracker and still drifts
+            self.assertIn("01-data-prep", drift["sourceDrift"])
+
+
+class TestInlineWhitelist(unittest.TestCase):
+    def test_csv_never_inlines_md_still_does(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            r1 = root / "plans" / "execution" / "01-data-prep" / "results" / "r1"
+            (r1 / "artifacts" / "t.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+            (r1 / "artifacts" / "t.md").write_text("| a |\n|---|\n", encoding="utf-8")
+            manifest = json.loads((r1 / "manifest.json").read_text())
+            manifest["artifacts"].extend([
+                {"id": "tcsv", "kind": "table", "title": "T csv",
+                 "file": "artifacts/t.csv",
+                 "source": {"path": "output/t.csv", "sha256": "0" * 64,
+                            "bytes": 8, "oversized": False},
+                 "producedBy": None},
+                {"id": "tmd", "kind": "table", "title": "T md",
+                 "file": "artifacts/t.md",
+                 "source": {"path": "output/t.md", "sha256": "0" * 64,
+                            "bytes": 12, "oversized": False},
+                 "producedBy": None},
+            ])
+            (r1 / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            payload = board.collect_payload(root, "static", None)
+            board.build_assets(root, payload)
+            g = next(g for g in payload["files"]["executionPlans"]
+                     if g["component"] == "01-data-prep")
+            arts = {a["id"]: a for a in g["results"][0]["manifest"]["artifacts"]}
+            self.assertNotIn("inlineText", arts["tcsv"])
+            self.assertIn("inlineText", arts["tmd"])
 
 
 class TestSeedAnnotations(unittest.TestCase):

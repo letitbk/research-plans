@@ -16,6 +16,8 @@ import {
   parseScorecard,
   parseServes,
   payloadContentHash,
+  preRenewalSlugs,
+  slugFromLink,
 } from "./parse";
 import { devData } from "../dev-data";
 
@@ -350,6 +352,79 @@ describe("allFiles present-only history (hash stability)", () => {
     // present-only: everything-but-history hashes identically either way
     const a = allFiles(devData).filter((f) => f.path !== "plans/history.md");
     expect(payloadContentHash(a)).toBe(payloadContentHash(allFiles(noHistory)));
+  });
+});
+
+describe("renewal (v0.10): Renewed line, Foundations, archives, pre-renewal slugs", () => {
+  const renewedMaster =
+    "<!-- research-plans:master-plan -->\n# P — Master Plan\n\n" +
+    "Last updated: 2026-07-09\nInitialized: 2026-03-02 14:10\n" +
+    "Renewed: 2026-07-09 — pivot from X to Y\n\n" +
+    "## Project context\n\nNew direction.\n\n" +
+    "## Components\n\n" +
+    "| # | Component | Status | Execution plan | Outcome / notes | Serves |\n" +
+    "|---|---|---|---|---|---|\n" +
+    "| 1 | Carried | done | [v1](execution/01-carried/v1.md) | — | — |\n\n" +
+    "## Foundations\n\nRenewed from archive/master-plan-2026-07-09.md. Not carried: 02-explore.\n";
+
+  it("parses the Renewed line into {date, reason}", () => {
+    const mp = parseMasterPlan(renewedMaster);
+    expect(mp.ok).toBe(true);
+    expect(mp.renewed).toEqual({ date: "2026-07-09", reason: "pivot from X to Y" });
+  });
+
+  it("renewed defaults to null (template placeholder and old plans)", () => {
+    expect(parseMasterPlan(read(join(TEMPLATES, "master-plan.md"))).renewed).toBeNull();
+    expect(parseMasterPlan(devData.files.masterPlan.content).renewed).not.toBeNull();
+  });
+
+  it("surfaces the Foundations section body", () => {
+    const mp = parseMasterPlan(renewedMaster);
+    expect(mp.foundationsMd).toContain("archive/master-plan-2026-07-09.md");
+    expect(parseMasterPlan("# X\n\n## Components\n\n| a |\n|---|\n| 1 |\n").foundationsMd).toBeNull();
+  });
+
+  it("slugFromLink extracts the execution slug", () => {
+    expect(slugFromLink("[v1](execution/01-carried/v1.md)")).toBe("01-carried");
+    expect(slugFromLink("—")).toBeNull();
+  });
+
+  it("allFiles includes archives present-only, hash-stable otherwise", () => {
+    const withArchive = {
+      files: {
+        ...devData.files,
+        archives: [
+          { path: "plans/archive/master-plan-2026-07-01.md", content: "old", archivedOn: "2026-07-01" },
+        ],
+      },
+    };
+    expect(allFiles(withArchive as never).map((f) => f.path)).toContain(
+      "plans/archive/master-plan-2026-07-01.md",
+    );
+    const a = allFiles(withArchive as never).filter(
+      (f) => f.path !== "plans/archive/master-plan-2026-07-01.md",
+    );
+    const noArchives = { files: { ...devData.files, archives: undefined } };
+    expect(payloadContentHash(a)).toBe(payloadContentHash(allFiles(noArchives as never)));
+  });
+
+  it("preRenewalSlugs: linked only in an archive → flagged; current or unknown → not", () => {
+    const data = {
+      files: {
+        masterPlan: { content: renewedMaster },
+        archives: [{ content: "| 9 | Legacy | done | [v1](execution/09-legacy/v1.md) | — | — |" }],
+        executionPlans: [
+          { component: "01-carried" },
+          { component: "09-legacy" },
+          { component: "10-orphan" },
+        ],
+      },
+    };
+    const s = preRenewalSlugs(data as never);
+    expect(s.has("09-legacy")).toBe(true);
+    expect(s.has("01-carried")).toBe(false);
+    expect(s.has("10-orphan")).toBe(false);
+    expect(preRenewalSlugs({ files: { ...data.files, archives: undefined } } as never).size).toBe(0);
   });
 });
 
