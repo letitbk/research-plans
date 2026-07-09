@@ -34,23 +34,12 @@ export function sanitizeTableHtml(src: string): string {
   return table.outerHTML;
 }
 
-function csvToMarkdown(csv: string): string {
-  const rows = csv.trim().split("\n").map((l) => l.split(","));
-  if (rows.length === 0) return "";
-  const md = [
-    `| ${rows[0].join(" | ")} |`,
-    `| ${rows[0].map(() => "---").join(" | ")} |`,
-    ...rows.slice(1).map((r) => `| ${r.join(" | ")} |`),
-  ];
-  return md.join("\n");
-}
-
 export default function SafeTable({
   content,
   kind,
 }: {
   content: string;
-  kind: "html" | "md" | "csv";
+  kind: "html" | "md";
 }) {
   const html = useMemo(
     () => (kind === "html" ? sanitizeTableHtml(content) : ""),
@@ -69,10 +58,9 @@ export default function SafeTable({
       />
     );
   }
-  const md = kind === "csv" ? csvToMarkdown(content) : content;
   return (
     <div className="overflow-x-auto">
-      <Markdown source={md} className="text-sm" />
+      <Markdown source={content} className="text-sm" />
     </div>
   );
 }
