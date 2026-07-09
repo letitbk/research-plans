@@ -1,5 +1,9 @@
 import type { ResultArtifact, ResultsBundle } from "../lib/types";
-import { artifactDisplay, type ArtifactLink } from "../lib/artifactDisplay";
+import {
+  artifactDisplay,
+  resolveScriptSnapshot,
+  type ArtifactLink,
+} from "../lib/artifactDisplay";
 import SafeTable from "./SafeTable";
 
 /** One artifact (figure / typeset table / download), reused inside a finding
@@ -21,9 +25,7 @@ export default function ArtifactCard({
   onZoom?: (url: string, title: string) => void;
 }) {
   const d = artifactDisplay(art, bundle.assets);
-  const scriptFile = art.producedBy
-    ? bundle.scripts.find((s) => s.path.endsWith("/" + art.producedBy!.script))
-    : null;
+  const scriptFile = resolveScriptSnapshot(art.producedBy, bundle.scripts);
 
   const zoomImg = (url: string) => (
     <img
@@ -42,7 +44,7 @@ export default function ArtifactCard({
             }
           : undefined
       }
-      className={`max-h-80 w-full rounded border border-stone-100 object-contain${
+      className={`max-h-80 w-full rounded border border-stone-100 dark:border-stone-800 object-contain${
         onZoom ? " cursor-zoom-in" : ""
       }`}
     />
@@ -56,7 +58,7 @@ export default function ArtifactCard({
             key={l.label}
             href={l.url}
             download={l.download}
-            className="text-[11px] font-medium text-blue-700 underline"
+            className="text-[11px] font-medium text-blue-700 dark:text-blue-400 underline"
           >
             {l.label}
           </a>
@@ -68,16 +70,17 @@ export default function ArtifactCard({
     <div
       data-annot-scope={`artifact:${art.id}`}
       data-annot-section={`artifact ${art.id}: ${art.title}`}
-      className="rounded-lg border border-stone-200 bg-white p-4"
+      data-artifact-card-id={art.id}
+      className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-4"
     >
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-sm font-semibold text-stone-800">{art.title}</span>
-        <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] uppercase text-stone-500">
+        <span className="text-sm font-semibold text-stone-800 dark:text-stone-200">{art.title}</span>
+        <span className="rounded bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 text-[10px] uppercase text-stone-500">
           {art.kind}
         </span>
       </div>
       {d.mode === "oversized" ? (
-        <div className="rounded border border-dashed border-stone-300 p-6 text-center text-xs text-stone-500">
+        <div className="rounded border border-dashed border-stone-300 dark:border-stone-600 p-6 text-center text-xs text-stone-500">
           Too large to snapshot ({Math.round(art.source.bytes / 1024 / 1024)} MB)
           — original at <code>{art.source.path}</code>
         </div>
@@ -99,7 +102,7 @@ export default function ArtifactCard({
             <a
               href={d.url}
               download={d.basename ?? undefined}
-              className="text-xs font-medium text-blue-700 underline"
+              className="text-xs font-medium text-blue-700 dark:text-blue-400 underline"
             >
               open {d.basename}
             </a>
@@ -107,14 +110,14 @@ export default function ArtifactCard({
           {linksRow(d.links)}
         </>
       ) : (
-        <div className="text-xs text-stone-400">no snapshot file</div>
+        <div className="text-xs text-stone-400 dark:text-stone-500">no snapshot file</div>
       )}
       {art.caption && (
         <p className="mt-2 text-xs text-stone-500">{art.caption}</p>
       )}
       {art.producedBy && (
         <button
-          className="mt-2 text-[11px] font-medium text-blue-700 underline disabled:text-stone-400 disabled:no-underline"
+          className="mt-2 text-[11px] font-medium text-blue-700 dark:text-blue-400 underline disabled:text-stone-400 disabled:no-underline"
           disabled={!scriptFile}
           onClick={() =>
             setOpenScript(

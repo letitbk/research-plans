@@ -392,6 +392,11 @@ export interface ResultCommentAnnotation {
     metricLabel?: string;
     quote?: string;
     occurrenceIndex?: number;
+    // v0.11: the data-annot-scope the selection was made under (e.g.
+    // "provenance:fig1" vs "artifact:fig1"), so the highlight repaints on the
+    // surface where it was made. Absent on older annotations — the paint pass
+    // then falls back to the scope derived from `kind`.
+    surfaceScope?: string;
   };
   comment: string;
   author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
