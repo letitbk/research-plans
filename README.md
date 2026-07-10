@@ -75,6 +75,7 @@ If your Claude Code build prefers it, the equivalent fallback is to check out th
 | `/research-plans:plan` | Scope the next component and co-author its execution plan. |
 | `/research-plans:sync` | Post-execution checkpoint. Update the tracker, catch unlogged decisions, version the plan if execution deviated. |
 | `/research-plans:review` | Two-stage review: first a pass/fail threshold (is this a plan at all: goal and success criteria, reasoned scope decisions, executable steps, a named verification plan, prospectivity, recorded revisions), then a quality grade if it passes. Always includes a split assessment. |
+| `/research-plans:models` | View or edit the per-stage model profile; regenerates the project's `rp-*` review agents. |
 | `/research-plans:results` | Capture a versioned results bundle for a component — brief report, figure/table snapshots, key numbers, script snapshots, and an automatic plan-vs-execution validation. `--adopt` brings pre-existing artifacts under verification. |
 | `/research-plans:report` | Generate a shareable report for a bundle (markdown always; PDF/DOCX via pandoc) into `plans/reports/` — also available as the board's Generate report button. |
 | `/research-plans:board` | Open the board: a browser dashboard over everything, with drift flags, live annotation, a shareable snapshot, or `--publish-web` to a private, password-protected link for collaborators. |
@@ -108,6 +109,14 @@ Adopting the workflow mid-project? `/research-plans:results --adopt` scans your 
 Plans ran ahead of your results record? `/research-plans:results` with **no argument** is reconcile mode: it walks the tracker for components that are done but bundle-less (or whose verified sources have drifted), and backfills them one interview at a time. Work that a signed plan governed but was captured after the fact is marked `late` — the same honesty rule as the decision log's late-captured entries: backfilling is fine, unlabeled backfilling is not.
 
 - **Share with collaborators**: `--share` exports an annotatable board file you can email; collaborators comment in their browser and send back a feedback file that `--collect <file>` routes with attribution.
+
+## Model profiles
+
+Different stages deserve different models: planning is where quality compounds (strongest model, max effort), execution is interactive and iterative (a fast cheap model stretches subscription quota), and review or validation are short judgment tasks where a smarter prior beats longer thinking. `/research-plans:init` writes a per-project profile at `plans/model-profile.md` (committed; `/research-plans:models` edits it) with those defaults.
+
+Two mechanisms, named in the profile's mechanism column. **nudge** — interactive stages (`/plan`, `/sync`, execution) print one line when your session model differs from the profile's, suggesting `/model <model>` (switching mid-conversation is safe — nothing is lost); you decide. **agent** — delegated stages (plan review, results validation, the board's subagent reviews) run in generated project agents at `.claude/agents/rp-*.md` (committed, ownership-marked: `/models` never overwrites a same-named agent you wrote yourself), whose frontmatter pins the profile's model and effort. The pin is a request, not a guarantee — an organization model allowlist, `CLAUDE_CODE_SUBAGENT_MODEL`, or a per-invocation override supersedes it silently. Projects without a profile behave exactly as before.
+
+Model profiles need a current Claude Code (verified on Claude Code 2.1.206) for agent `effort:` frontmatter — older builds run the agents on their default model resolution and ignore the effort request.
 
 ## The sign-off gate
 
