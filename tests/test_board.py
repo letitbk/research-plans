@@ -719,6 +719,19 @@ class TestPublish(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 board.publish_pages(root, None)
 
+    def test_publish_emits_deprecation_warning(self):
+        import io, contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)  # plans/ tree but NOT a git repo — dies fast
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    board.publish_pages(root, None)
+            self.assertIn("DEPRECATED", err.getvalue())
+            self.assertIn("--publish-web", err.getvalue())
+            self.assertIn("gh-pages", err.getvalue())
+
     def test_publish_rejects_non_github_origin(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

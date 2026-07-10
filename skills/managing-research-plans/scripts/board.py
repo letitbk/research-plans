@@ -1224,6 +1224,12 @@ def _repo_visibility(owner, repo):
 
 
 def publish_pages(root, args):
+    print(
+        "DEPRECATED: --publish (GitHub Pages) is deprecated because it makes plans "
+        "world-readable. Use --publish-web (private, Vercel) instead. To take down an "
+        "old Pages board: delete the gh-pages branch and disable Pages in the repo settings.",
+        file=sys.stderr,
+    )
     if _git(root, ["rev-parse", "--is-inside-work-tree"], check=False).returncode != 0:
         die("not a git repository — --publish needs a git repo with a GitHub 'origin' remote")
     remote = _git(root, ["remote", "get-url", "origin"], check=False)
