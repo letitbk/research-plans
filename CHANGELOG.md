@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.0] - 2026-07-09
+
+Release plumbing — the plugin now tells you when it's out of date, and every
+version is installable by tag.
+
+### Added
+- **Update reminders.** A once-per-version notice at session start names the
+  exact update command and highlights what's new. Silence it with
+  `RESEARCH_PLANS_NO_UPDATE_CHECK=1`.
+- **Version pinning.** Every release (v0.1.0 … v0.12.0) is now a git tag, and
+  the README shows how to install a specific older version.
+- **`docs/RELEASING.md`.** A written release process so version bumps and tags
+  stay in lockstep.
+
+### Changed
+- **One authoritative version.** `.claude-plugin/plugin.json` is now the single
+  source of the version string; the duplicate in `marketplace.json` was removed.
+
 ## 0.11.0 (2026-07-09)
 
 UI release — dark mode, readable paragraphs, and a provenance flow diagram.

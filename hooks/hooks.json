@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/scripts/check_update.py\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
