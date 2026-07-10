@@ -1841,5 +1841,56 @@ class TestLockMeta(unittest.TestCase):
             self.assertEqual(len(info.get("bootId", "")), 32)
 
 
+class TestServeHTTP(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+        make_project(self.root)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def _get_raw(self, url, path="/"):
+        req = urllib.request.Request(url + path, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, r.read().decode("utf-8"), dict(r.headers)
+
+    def test_health_carries_identity_and_no_store(self):
+        url, info, t = serve_in_thread(self.root)
+        status, body, headers = http_json(url, "/api/health")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["bootId"]), 32)
+        self.assertEqual(body["bootId"], info["bootId"])
+        self.assertEqual(len(body["generation"]), 64)
+        self.assertEqual(body["projectId"], board.project_id(self.root))
+        self.assertEqual(headers.get("Cache-Control"), "no-store")
+
+    def test_html_get_has_frame_denial_and_no_store(self):
+        url, info, t = serve_in_thread(self.root)
+        status, html, headers = self._get_raw(url)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        self.assertIn("frame-ancestors 'none'",
+                      headers.get("Content-Security-Policy", ""))
+        self.assertEqual(headers.get("Cache-Control"), "no-store")
+
+    def test_get_with_evil_host_is_403(self):
+        url, info, t = serve_in_thread(self.root)
+        status, body, _ = http_json(url, "/api/health",
+                                    headers={"Host": "evil.example.com"})
+        self.assertEqual(status, 403)
+
+    def test_generation_stable_across_volatile_tokens(self):
+        p1 = {"a": 1, "publishToken": "x", "boardToken": "y"}
+        p2 = {"a": 1, "publishToken": "zzz", "boardToken": "qqq"}
+        self.assertEqual(board.payload_generation(p1), board.payload_generation(p2))
+
+    def test_served_payload_carries_project_id(self):
+        url, info, t = serve_in_thread(self.root)
+        status, html, _ = self._get_raw(url)
+        payload = extract_payload(html)
+        self.assertEqual(payload["projectId"], board.project_id(self.root))
+
+
 if __name__ == "__main__":
     unittest.main()

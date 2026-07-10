@@ -557,6 +557,20 @@ def derive_port(root):
     return 41000 + int(digest, 16) % 1000
 
 
+def project_id(root):
+    """Stable public project identity (same digest input as derive_port)."""
+    return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def payload_generation(payload):
+    """Content identity of the served payload, excluding per-boot secrets."""
+    trimmed = {k: v for k, v in payload.items()
+               if k not in ("publishToken", "boardToken")}
+    return hashlib.sha256(
+        json.dumps(trimmed, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
 def bind_server(root, requested, handler_cls):
     """Bind-with-retry (never check-then-bind). A requested port is pinned —
     a relaunch may race the prior socket's close, so retry it; otherwise probe
@@ -678,6 +692,9 @@ def serve(root, payload, args):
     amap = artifact_map(root, payload)
     publish_token = hashlib.sha256(os.urandom(32)).hexdigest()
     payload["publishToken"] = publish_token  # board reads window.__RP_PUBLISH_TOKEN__ from this
+    payload["projectId"] = project_id(root)
+    proj_id = payload["projectId"]
+    generation = payload_generation(payload)
     html = inject(template_path().read_text(encoding="utf-8"), payload)
     html_bytes = html.encode("utf-8")
     done = threading.Event()
@@ -687,17 +704,25 @@ def serve(root, payload, args):
         def log_message(self, *a):  # quiet
             pass
 
-        def _json(self, code, obj):
+        def _json(self, code, obj, no_store=False):
             blob = json.dumps(obj).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(blob)))
+            if no_store:
+                self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(blob)
 
         def do_GET(self):
+            if not _host_is_local(self.headers.get("Host")):
+                self.send_response(403)  # DNS-rebinding guard, GET included
+                self.end_headers()
+                return
             if self.path == "/api/health":
-                self._json(200, {"ok": True, "app": "research-plans-board"})
+                self._json(200, {"ok": True, "app": "research-plans-board",
+                                 "bootId": boot_id, "generation": generation,
+                                 "projectId": proj_id}, no_store=True)
                 return
             if self.path.startswith("/artifact/"):
                 f = amap.get(self.path)
@@ -716,6 +741,9 @@ def serve(root, payload, args):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(html_bytes)
 
