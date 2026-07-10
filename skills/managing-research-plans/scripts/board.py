@@ -82,9 +82,40 @@ GITIGNORE_LINES = [
     "/execution/*/.gate-*.md",
     "/execution/.import-approved-*",
     "/execution/*/results/.staging-*/",
+    "/.board-web/",
+    "/.board-web-inbox/",
 ]
 
 FENCE_RE = re.compile(r"```json board-feedback\n(.*?)\n```", re.DOTALL)
+
+
+def web_project_hash(root):
+    return hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:16]
+
+
+def _web_data_dir():
+    base = os.environ.get("CLAUDE_PLUGIN_DATA")
+    d = Path(base) / "web" if base else Path.home() / ".research-plans" / "web"
+    return d
+
+
+def web_config_path(root):
+    return _web_data_dir() / ("%s.json" % web_project_hash(root))
+
+
+def read_web_config(root):
+    p = web_config_path(root)
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_web_config(root, cfg):
+    p = web_config_path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg))
+    os.chmod(p, 0o600)
 
 
 def die(msg, code=1):

@@ -129,6 +129,35 @@ def extract_payload(html: str) -> dict:
     return json.loads(m.group(1))
 
 
+class TestWebConfig(unittest.TestCase):
+    def test_hash_is_stable_per_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(board.web_project_hash(Path(d)), board.web_project_hash(Path(d)))
+
+    def test_write_then_read_roundtrips_0600(self, ):
+        import os, stat
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            try:
+                board.write_web_config(root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k"})
+                cfg = board.read_web_config(root)
+                self.assertEqual(cfg["pullKey"], "k")
+                mode = stat.S_IMODE(board.web_config_path(root).stat().st_mode)
+                self.assertEqual(mode, 0o600)
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_read_missing_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(Path(d) / "empty")
+            try:
+                self.assertIsNone(board.read_web_config(Path(d)))
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+
 class TestLocalRequestGuard(unittest.TestCase):
     def test_rejects_cross_origin(self):
         self.assertFalse(board.local_request_ok(
