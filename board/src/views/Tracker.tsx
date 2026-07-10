@@ -4,12 +4,15 @@ import AnnotationLayer, {
   type AnchoredSelection,
 } from "../components/AnnotationLayer";
 import ReviewMenu from "../components/ReviewMenu";
+import { actionsVisible, planActionState } from "../lib/actions";
+import RequestChangesButton from "../components/RequestChangesButton";
 import type {
   Annotation,
   BoardData,
   DocCommentAnnotation,
   ReviewRequest,
   TrackerStatus,
+  SignoffRequest,
 } from "../lib/types";
 import {
   parseDecisionLog,
@@ -42,6 +45,7 @@ export default function Tracker({
   onAddGeneral,
   canPost,
   onRequestReview,
+  onSignoff,
   onOpenArchive,
 }: {
   data: BoardData;
@@ -58,6 +62,7 @@ export default function Tracker({
   onAddGeneral: (view: string, comment: string) => void;
   canPost?: boolean;
   onRequestReview?: (req: ReviewRequest) => void;
+  onSignoff?: (req: SignoffRequest) => void;
   onOpenArchive?: () => void;
 }) {
   const mp = parseMasterPlan(data.files.masterPlan.content);
@@ -297,7 +302,7 @@ export default function Tracker({
               Last updated {mp.lastUpdated}
             </span>
           )}
-          {canPost && !data.gate && onRequestReview && (
+          {actionsVisible(data) && onRequestReview && (
             <ReviewMenu
               onPick={(agent) => onRequestReview({ agent, scope: "master" })}
             />
@@ -424,12 +429,45 @@ export default function Tracker({
                   </td>
                   <td className="px-4 py-2.5">
                     {slug && !missingFile ? (
-                      <button
-                        className="text-xs font-medium text-blue-700 dark:text-blue-400 underline hover:text-blue-900 dark:hover:text-blue-300"
-                        onClick={() => onOpenComponent(slug, r.component)}
-                      >
-                        open plan
-                      </button>
+                      <div className="space-y-1">
+                        <button
+                          className="text-xs font-medium text-blue-700 dark:text-blue-400 underline hover:text-blue-900 dark:hover:text-blue-300"
+                          onClick={() => onOpenComponent(slug, r.component)}
+                        >
+                          open plan
+                        </button>
+                        {actionsVisible(data) && onSignoff && (() => {
+                          const st = planActionState(data, slug, annotations);
+                          if (st.kind === "approve") {
+                            return (
+                              <div className="flex flex-wrap items-center gap-1">
+                                <button
+                                  className="rounded border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950 px-1.5 py-0.5 text-[11px] font-medium text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-40"
+                                  disabled={st.blockedByComments}
+                                  title={st.blockedByComments ? "Send or delete the pending comments on this draft first" : undefined}
+                                  onClick={() => onSignoff({ component: slug, version: st.version as number, decision: "approve" })}
+                                >
+                                  Approve v{st.version}
+                                </button>
+                                <RequestChangesButton
+                                  requireReason={!st.blockedByComments}
+                                  onSubmit={(reason) =>
+                                    onSignoff({ component: slug, version: st.version as number, decision: "request-changes", reason })
+                                  }
+                                />
+                              </div>
+                            );
+                          }
+                          if (st.kind === "signedOff") {
+                            return (
+                              <div className="text-[11px] text-green-700 dark:text-green-400">
+                                ✓ Signed off v{st.version}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                     ) : missingFile ? (
                       <span className="rounded bg-red-50 dark:bg-red-950 px-1.5 py-0.5 text-xs text-red-700 dark:text-red-400">
                         linked file missing

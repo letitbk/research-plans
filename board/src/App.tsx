@@ -26,6 +26,7 @@ import { liveDraftKey, loadDrafts, clearSubmitted } from "./lib/drafts";
 import FeedbackPanel, { type SubmitState } from "./components/FeedbackPanel";
 import { useHeaderOffset, useMediaQuery } from "./lib/layoutHooks";
 import { navTargetFor, type NavTarget } from "./lib/navTarget";
+import type { ReopenRequest, SignoffRequest } from "./lib/types";
 import type {
   Annotation,
   BoardData,
@@ -613,6 +614,87 @@ export default function App({ data }: { data: BoardData }) {
     }
   };
 
+  // ---- Control-surface actions (spec §3): typed sign-off + reopen.
+  // Each submission carries ONLY its target-scoped pending comments; unrelated
+  // drafts stay pending (and stay in storage via clearSentDrafts).
+  const submitSignoff = async (req: SignoffRequest) => {
+    const scoped = annotations.filter(
+      (a) => a.type === "plan-comment" && a.component === req.component && a.isDraft,
+    );
+    const md = buildFeedbackMarkdown(scoped, null, null, null, req);
+    const doc = buildFeedbackDocument(md, {
+      sessionId,
+      generatedAt: data.generatedAt,
+      mode: data.mode,
+      focus: data.focus,
+      reviewer: null,
+      payloadHash,
+      shareHash: data.shareHash ?? null,
+      annotations: scoped,
+      signoff: req,
+    });
+    setSubmitState("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          annotations: scoped,
+          feedbackMarkdown: md,
+          payloadHash,
+          feedbackDocument: doc,
+          action: { kind: "signoff", ...req },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSubmitState("sent");
+      clearSentDrafts(scoped.map((a) => a.id));
+      setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
+    } catch {
+      setSubmitState("failed");
+    }
+  };
+
+  const submitReopen = async (req: ReopenRequest) => {
+    const scoped = annotations.filter(
+      (a) =>
+        (a.type === "result-comment" || a.type === "script-comment") &&
+        a.component === req.component &&
+        a.resultsVersion === req.resultsVersion,
+    );
+    const md = buildFeedbackMarkdown(scoped, null, null, null, null, req);
+    const doc = buildFeedbackDocument(md, {
+      sessionId,
+      generatedAt: data.generatedAt,
+      mode: data.mode,
+      focus: data.focus,
+      reviewer: null,
+      payloadHash,
+      shareHash: data.shareHash ?? null,
+      annotations: scoped,
+      reopen: req,
+    });
+    setSubmitState("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          annotations: scoped,
+          feedbackMarkdown: md,
+          payloadHash,
+          feedbackDocument: doc,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSubmitState("sent");
+      clearSentDrafts(scoped.map((a) => a.id));
+      setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
+    } catch {
+      setSubmitState("failed");
+    }
+  };
+
   const copyFallback = async () => {
     try {
       await navigator.clipboard.writeText(feedbackDocument);
@@ -906,6 +988,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "tracker" && (
           <Tracker
             data={data}
+            onSignoff={submitSignoff}
             canAnnotate={canAnnotate}
             annotations={annotations}
             onAddDocComment={addDocComment}
@@ -929,6 +1012,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "plans" && (
           <PlanReader
             data={data}
+            onSignoff={submitSignoff}
             navRequest={navRequest?.tab === "plans" ? { token: navRequest.token, planPath: navRequest.planPath } : null}
             canAnnotate={canAnnotate}
             selectedComponent={selectedComponent}
@@ -947,6 +1031,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "results" && (
           <Results
             data={data}
+            onReopen={submitReopen}
             navRequest={navRequest?.tab === "results" ? { token: navRequest.token, resultsVersion: navRequest.resultsVersion, scriptPath: navRequest.scriptPath } : null}
             canAnnotate={canAnnotate}
             canPost={canPost}

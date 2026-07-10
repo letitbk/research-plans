@@ -5,8 +5,10 @@ import type {
   Annotation,
   BoardData,
   DocCommentAnnotation,
+  ReopenRequest,
   ReportRequest,
   ReviewRequest,
+  SignoffRequest,
   VerdictRequest,
 } from "./types";
 
@@ -22,6 +24,12 @@ export interface FeedbackMeta {
   verdict?: VerdictRequest | null;
   reviewRequest?: ReviewRequest | null; // agent plan review (v0.9)
   reportRequest?: ReportRequest | null; // per-bundle report generation (v0.10)
+  // Control surface (v0.15). signoff is ADVISORY here: the server validates
+  // the typed action body and authors the authoritative order document itself.
+  signoff?: SignoffRequest | null;
+  // reopen is comment-tier on the wire — a change request against an accepted
+  // bundle; it never authorizes anything and non-live ingress strips it.
+  reopen?: ReopenRequest | null;
 }
 
 export function newSessionId(): string {
@@ -59,10 +67,38 @@ export function buildFeedbackMarkdown(
   verdict: VerdictRequest | null,
   reviewRequest?: ReviewRequest | null,
   reportRequest?: ReportRequest | null,
+  signoff?: SignoffRequest | null,
+  reopen?: ReopenRequest | null,
 ): string {
-  if (annotations.length === 0 && !verdict && !reviewRequest && !reportRequest)
+  if (
+    annotations.length === 0 &&
+    !verdict &&
+    !reviewRequest &&
+    !reportRequest &&
+    !signoff &&
+    !reopen
+  )
     return "# Board Feedback\n\nNo feedback.";
   const lines: string[] = ["# Board Feedback", ""];
+  if (signoff) {
+    lines.push(
+      `## SIGNOFF: ${signoff.component} v${signoff.version} — ${signoff.decision}`,
+    );
+    if (signoff.reason)
+      lines.push(...signoff.reason.split("\n").map((l) => `> ${l}`));
+    lines.push("");
+  }
+  if (reopen) {
+    lines.push(
+      `## REOPEN REQUEST: ${reopen.component} r${reopen.resultsVersion}`,
+      ...reopen.reason.split("\n").map((l) => `> ${l}`),
+      "",
+      "A change request against an ACCEPTED bundle: never touch verdict.json;",
+      "route the reason and comments as revision feedback — the next capture",
+      "becomes the following results version with its own verdict.",
+      "",
+    );
+  }
   if (reportRequest) {
     lines.push(
       `## REPORT REQUEST: ${reportRequest.component} r${reportRequest.resultsVersion}`,

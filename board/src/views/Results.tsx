@@ -9,6 +9,7 @@ import AnnotationLayer, {
 import ReviewMenu from "../components/ReviewMenu";
 import { Notice } from "./Tracker";
 import { parseExecutionPlan, preRenewalSlugs } from "../lib/parse";
+import { actionsVisible } from "../lib/actions";
 import type {
   Annotation,
   BoardData,
@@ -20,6 +21,7 @@ import type {
   ScriptCommentAnnotation,
   ValidationBlock,
   VerdictRequest,
+  ReopenRequest,
 } from "../lib/types";
 
 function verdictBadge(b: ResultsBundle): { label: string; cls: string } {
@@ -143,6 +145,7 @@ export default function Results({
   focusResults,
   onRequestReview,
   onRequestReport,
+  onReopen,
   navRequest,
 }: {
   data: BoardData;
@@ -162,6 +165,7 @@ export default function Results({
   focusResults: number | null;
   onRequestReview?: (req: ReviewRequest) => void;
   onRequestReport?: (req: ReportRequest) => void;
+  onReopen?: (req: ReopenRequest) => void;
   // Click-sync (control surface): one-shot navigation to a bundle/script.
   navRequest?: {
     token: number;
@@ -374,7 +378,7 @@ export default function Results({
               </button>
             );
           })}
-          {canPost && (onRequestReview || onRequestReport) && (
+          {actionsVisible(data) && (onRequestReview || onRequestReport) && (
             <div className="ml-auto flex items-center gap-2">
               {onRequestReport && (
                 <button
@@ -454,7 +458,7 @@ export default function Results({
               pre-renewal
             </span>
           )}
-          {canPost && !bundle.verdict && (
+          {actionsVisible(data) && !bundle.verdict && (
             <span className="ml-auto flex items-center gap-2">
               <input
                 className="w-56 rounded-md border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs"
@@ -487,6 +491,30 @@ export default function Results({
                 }
               >
                 Request changes
+              </button>
+            </span>
+          )}
+          {actionsVisible(data) && bundle.verdict && onReopen && (
+            <span className="ml-auto flex items-center gap-2">
+              <input
+                className="w-56 rounded-md border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs"
+                placeholder="Reopen — why? (required)"
+                value={verdictComment}
+                onChange={(e) => setVerdictComment(e.target.value)}
+              />
+              <button
+                className="rounded-md border border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-40"
+                disabled={!verdictComment.trim()}
+                title="Files a change request against this accepted bundle; the recorded verdict is never modified."
+                onClick={() =>
+                  onReopen({
+                    component: group.component,
+                    resultsVersion: bundle.resultsVersion,
+                    reason: verdictComment.trim(),
+                  })
+                }
+              >
+                Reopen — request changes
               </button>
             </span>
           )}

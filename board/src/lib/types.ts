@@ -377,6 +377,22 @@ export interface DocCommentAnnotation {
   author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
 }
 
+// Control surface (v0.15): typed researcher actions from the always-on
+// clusters. Signoff rides the POST body's `action` field and is validated +
+// re-authored server-side; reopen is a comment-tier change request.
+export interface SignoffRequest {
+  component: string;
+  version: number;
+  decision: "approve" | "request-changes";
+  reason?: string;
+}
+
+export interface ReopenRequest {
+  component: string;
+  resultsVersion: number;
+  reason: string;
+}
+
 export interface GeneralAnnotation {
   id: string;
   type: "general";
