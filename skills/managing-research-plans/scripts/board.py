@@ -31,6 +31,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -849,14 +851,39 @@ def _first_url(text):
     return m.group(0) if m else None
 
 
+def _http_get_json(url, headers):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def group_comments(comments):
+    groups = {}
+    for c in comments:
+        groups.setdefault((c.get("author") or "anonymous", c.get("clientId") or ""), []).append(c)
+    return groups
+
+
+def _pulled_path(root):
+    return root / "plans" / ".board-web-pulled.json"
+
+
+def _read_pulled(root):
+    try:
+        return set(json.loads(_pulled_path(root).read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
 def _count_unpulled(root, cfg):
     """Best-effort count of comments not yet pulled locally. Returns 0 on ANY
     error (network, auth, parsing) and never raises — publish_web's report
-    line is a nice-to-have, not a reason to fail the deploy. There is no
-    local pulled-id bookkeeping yet (that lands with --pull), so this is a
-    stub returning 0 until that lands; --pull can enrich it then."""
+    line is a nice-to-have, not a reason to fail the deploy."""
     try:
-        return 0
+        url = cfg["url"].rstrip("/") + "/api/comments"
+        data = _http_get_json(url, {"x-board-key": cfg["pullKey"]})
+        pulled = _read_pulled(root)
+        return sum(1 for c in data.get("comments", []) if c.get("id") not in pulled)
     except Exception:
         return 0
 
@@ -881,6 +908,54 @@ def publish_web(root, args):
     if unpulled:
         print("  %d new comment%s waiting — run /research-plans:board --pull"
               % (unpulled, "" if unpulled == 1 else "s"))
+
+
+def pull(root, args):
+    cfg = read_web_config(root)
+    if cfg is None:
+        die("No web board configured. Run /research-plans:board --publish-web first.")
+    url = cfg["url"].rstrip("/") + "/api/comments"
+    try:
+        data = _http_get_json(url, {"x-board-key": cfg["pullKey"]})
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            die("Pull key rejected (rotated or reset). Run /research-plans:board --web-connect.")
+        die("Web board returned %s. It may be misconfigured; try --publish-web again." % e.code)
+    except (urllib.error.URLError, OSError):
+        die("Web board unreachable (the project may be deleted). Run --publish-web to recreate, "
+            "or ignore it.")
+    comments = data.get("comments", [])
+    pulled = _read_pulled(root)
+    new = [c for c in comments if c.get("id") not in pulled]
+    if not new:
+        print("No new remote comments.")
+        return
+    groups = group_comments(new)
+    # Same display name, different device/session — split rather than merged
+    # (the recurring bug this guards against is silently interleaving two
+    # collaborators' feedback into one document).
+    by_author = {}
+    for author, client in groups:
+        by_author.setdefault(author, set()).add(client)
+    for author, clients in by_author.items():
+        if len(clients) > 1:
+            print("note: %d collaborators share the name '%s'; splitting by device"
+                  % (len(clients), author))
+    inbox = root / "plans" / ".board-web-inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    docs = []
+    for (author, client), group in groups.items():
+        meta = {"sessionId": client or author, "generatedAt": "",
+                "focus": None, "reviewer": author,
+                "shareHash": group[-1].get("shareHash")}
+        doc = assemble_hosted_document([c["annotation"] for c in group], meta)
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", "%s-%s" % (author, client))[:60] or "group"
+        (inbox / ("%s.txt" % safe)).write_text(doc, encoding="utf-8")   # inbox FIRST
+        docs.append(doc)
+    # Only after every document is safely on disk do we mark ids pulled.
+    _pulled_path(root).write_text(json.dumps(sorted(pulled | {c["id"] for c in new})))
+    for doc in docs:
+        inspect_feedback_document(root, doc)   # route (prints)
 
 
 def export(root, args):

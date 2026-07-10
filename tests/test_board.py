@@ -1115,6 +1115,65 @@ class TestGoldenFeedbackContract(unittest.TestCase):
         self.assertEqual(key(py_meta["annotations"]), key(ts_meta["annotations"]))
 
 
+class TestPull(unittest.TestCase):
+    COMMENTS = [
+        {"id": "c1", "clientId": "x", "author": "Ada", "shareHash": "h",
+         "annotation": {"type": "doc-comment", "view": "tracker", "quote": "q", "comment": "one"}},
+        {"id": "c2", "clientId": "y", "author": "Ada", "shareHash": "h",
+         "annotation": {"type": "doc-comment", "view": "tracker", "quote": "q", "comment": "two"}},
+    ]
+
+    def setUp(self):
+        # save so patches in individual tests never leak to other tests
+        self._orig_http_get_json = board._http_get_json
+
+    def tearDown(self):
+        board._http_get_json = self._orig_http_get_json
+
+    def _setup(self, root):
+        import os
+        os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+        board.write_web_config(root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k"})
+        board._http_get_json = lambda url, headers: {"comments": self.COMMENTS}
+
+    def test_two_same_name_diff_client_are_split(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); self._setup(root)
+            try:
+                groups = board.group_comments(self.COMMENTS)
+                self.assertEqual(len(groups), 2)  # split by clientId, not merged
+            finally:
+                import os; del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_inbox_written_before_marking_pulled(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); self._setup(root)
+            try:
+                import io, contextlib
+                with contextlib.redirect_stdout(io.StringIO()):
+                    board.pull(root, board.parse_args(["--pull"]))
+                inbox = list((root / "plans" / ".board-web-inbox").glob("*.txt"))
+                self.assertTrue(inbox)  # documents materialized
+                pulled = json.loads((root / "plans" / ".board-web-pulled.json").read_text())
+                self.assertEqual(set(pulled), {"c1", "c2"})
+            finally:
+                import os; del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_second_pull_skips_already_pulled(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); self._setup(root)
+            try:
+                import io, contextlib
+                with contextlib.redirect_stdout(io.StringIO()):
+                    board.pull(root, board.parse_args(["--pull"]))
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    board.pull(root, board.parse_args(["--pull"]))
+                self.assertIn("no new", out.getvalue().lower())
+            finally:
+                import os; del os.environ["CLAUDE_PLUGIN_DATA"]
+
+
 class TestArgGuards(unittest.TestCase):
     def test_multiple_actions_rejected(self):
         with self.assertRaises(SystemExit):
