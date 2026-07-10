@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.15.0] - UNRELEASED
+## [Unreleased]
 
 The live board becomes a persistent control surface — a bookmarkable URL that stays up, refreshes itself after every action, and carries every researcher decision.
 
