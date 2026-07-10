@@ -25,6 +25,7 @@ import {
 import { liveDraftKey, loadDrafts, clearSubmitted } from "./lib/drafts";
 import FeedbackPanel, { type SubmitState } from "./components/FeedbackPanel";
 import { useHeaderOffset, useMediaQuery } from "./lib/layoutHooks";
+import { navTargetFor, type NavTarget } from "./lib/navTarget";
 import type {
   Annotation,
   BoardData,
@@ -688,6 +689,74 @@ export default function App({ data }: { data: BoardData }) {
     );
   }
 
+  // ---- Click-sync (control surface, spec §2): card -> highlight and back.
+  const navTokenRef = useRef(0);
+  const [navRequest, setNavRequest] = useState<({ token: number } & NavTarget) | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showSyncNotice = (msg: string) => {
+    setSyncNotice(msg);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setSyncNotice(null), 2500);
+  };
+  const flash = (els: Element[]) => {
+    for (const el of els) {
+      el.classList.remove("annot-flash");
+      void (el as HTMLElement).offsetWidth; // restart the animation
+      el.classList.add("annot-flash");
+    }
+  };
+  const scrollToSelector = (selector: string, tries = 15) => {
+    const attempt = (left: number) => {
+      const els = Array.from(document.querySelectorAll(selector));
+      if (els.length > 0) {
+        (els[0] as HTMLElement).scrollIntoView({ block: "center" });
+        flash(els);
+        return;
+      }
+      if (left > 0) setTimeout(() => attempt(left - 1), 100);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(() => attempt(tries)));
+  };
+  const openAnnotation = (a: Annotation) => {
+    const target = navTargetFor(a, data);
+    setTab(target.tab);
+    if (target.component) setSelectedComponent(target.component);
+    navTokenRef.current += 1;
+    setNavRequest({ ...target, token: navTokenRef.current });
+    if (!target.anchored) {
+      showSyncNotice("No highlight in this document — opened its view instead.");
+      return;
+    }
+    scrollToSelector(`mark[data-annotation="${a.id}"], [data-annotation="${a.id}"]`);
+  };
+  const openCard = (id: string) => {
+    setDrawerOpen(true);
+    scrollToSelector(`[data-card-id="${id}"]`);
+  };
+  // Highlight -> card: one document-level delegated listener covers every
+  // view's marks (and ScriptViewer's line rows) without prop drilling.
+  useEffect(() => {
+    const resolve = (t: EventTarget | null) =>
+      (t as HTMLElement | null)?.closest?.("[data-annotation]");
+    const onClick = (e: MouseEvent) => {
+      const mark = resolve(e.target);
+      if (mark) openCard(mark.getAttribute("data-annotation") as string);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      const mark = resolve(e.target);
+      if (mark) openCard(mark.getAttribute("data-annotation") as string);
+    };
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const headerRef = useRef<HTMLElement | null>(null);
   const headerOffset = useHeaderOffset(headerRef);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -713,10 +782,16 @@ export default function App({ data }: { data: BoardData }) {
     onGateDeny: gateDeny,
     onDownload: download,
     onCopyFallback: copyFallback,
+    onCardClick: openAnnotation,
   };
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950">
+      {syncNotice && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-200 shadow-lg">
+          {syncNotice}
+        </div>
+      )}
       <header ref={headerRef} className="sticky top-0 z-30 border-b border-stone-200 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] items-center gap-4 px-5 py-3">
           <div className="min-w-0">
@@ -854,6 +929,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "plans" && (
           <PlanReader
             data={data}
+            navRequest={navRequest?.tab === "plans" ? { token: navRequest.token, planPath: navRequest.planPath } : null}
             canAnnotate={canAnnotate}
             selectedComponent={selectedComponent}
             onSelectComponent={setSelectedComponent}
@@ -871,6 +947,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "results" && (
           <Results
             data={data}
+            navRequest={navRequest?.tab === "results" ? { token: navRequest.token, resultsVersion: navRequest.resultsVersion, scriptPath: navRequest.scriptPath } : null}
             canAnnotate={canAnnotate}
             canPost={canPost}
             selectedComponent={selectedComponent}
@@ -888,6 +965,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "archive" && (
           <Archive
             data={data}
+            navRequest={navRequest?.tab === "archive" ? { token: navRequest.token, archivePath: navRequest.archivePath } : null}
             canAnnotate={canAnnotate}
             annotations={annotations}
             onAddDocComment={addDocComment}
@@ -906,6 +984,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "timeline" && (
           <Timeline
             data={data}
+            navRequest={navRequest?.tab === "timeline" ? { token: navRequest.token, clearFilter: navRequest.clearTimelineFilter } : null}
             canAnnotate={canAnnotate}
             annotations={annotations}
             onAddDocComment={addDocComment}
@@ -916,6 +995,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "reviews" && (
           <Scorecard
             data={data}
+            navRequest={navRequest?.tab === "reviews" ? { token: navRequest.token, reviewPath: navRequest.reviewPath } : null}
             canAnnotate={canAnnotate}
             annotations={annotations}
             onAddDocComment={addDocComment}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Markdown from "../components/Markdown";
 import AnnotationLayer, {
   GeneralCommentBox,
@@ -40,6 +40,7 @@ export default function Timeline({
   onAddDocComment,
   onPaintResult,
   onAddGeneral,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -51,10 +52,19 @@ export default function Timeline({
     scopeAbsent: Set<string>,
   ) => void;
   onAddGeneral: (view: string, comment: string) => void;
+  navRequest?: { token: number; clearFilter?: boolean } | null;
 }) {
   const events = useMemo(() => buildEvents(data), [data]);
   const [filter, setFilter] = useState<EventKind | "all">("all");
   const [query, setQuery] = useState("");
+  // Click-sync: a filtered/searched timeline can hide the target event —
+  // clear BOTH before scrolling to it.
+  useEffect(() => {
+    if (!navRequest?.clearFilter) return;
+    setFilter("all");
+    setQuery("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
 
   const visible = events.filter((e) => {
     if (filter !== "all" && e.kind !== filter) return false;

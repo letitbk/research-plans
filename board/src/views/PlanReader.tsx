@@ -50,6 +50,7 @@ export default function PlanReader({
   onOpenResults,
   canPost,
   onRequestReview,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -67,6 +68,9 @@ export default function PlanReader({
   onOpenResults: (slug: string) => void;
   canPost?: boolean;
   onRequestReview?: (req: ReviewRequest) => void;
+  // Click-sync (control surface): one-shot navigation request from a feedback
+  // card. Internal selection stays authoritative; each new token overrides.
+  navRequest?: { token: number; planPath?: string } | null;
 }) {
   const groups = data.files.executionPlans;
   const preRenewal = preRenewalSlugs(data);
@@ -144,6 +148,14 @@ export default function PlanReader({
 
   const [docIdx, setDocIdx] = useState(docs.length - 1);
   useEffect(() => setDocIdx(docs.length - 1), [group?.component, docs.length]);
+  // Apply a click-sync navigation request: resolve the target path to this
+  // view's own index. User clicks afterwards still work (state stays local).
+  useEffect(() => {
+    if (!navRequest?.planPath) return;
+    const i = docs.findIndex((d) => d.path === navRequest.planPath);
+    if (i >= 0) setDocIdx(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
   const curIdx = Math.min(docIdx, docs.length - 1);
   const doc = docs[curIdx] ?? null;
 

@@ -143,6 +143,7 @@ export default function Results({
   focusResults,
   onRequestReview,
   onRequestReport,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -161,6 +162,12 @@ export default function Results({
   focusResults: number | null;
   onRequestReview?: (req: ReviewRequest) => void;
   onRequestReport?: (req: ReportRequest) => void;
+  // Click-sync (control surface): one-shot navigation to a bundle/script.
+  navRequest?: {
+    token: number;
+    resultsVersion?: number;
+    scriptPath?: string;
+  } | null;
 }) {
   const groups = data.files.executionPlans.filter(
     (g) => (g.results ?? []).length > 0,
@@ -192,6 +199,32 @@ export default function Results({
   const [verdictComment, setVerdictComment] = useState("");
   const [zoom, setZoom] = useState<{ url: string; title: string } | null>(null);
   useEffect(() => setOpenScript(null), [bundle?.dir]);
+  // Apply a click-sync navigation request. When the request also switches the
+  // bundle, its script target is stashed and applied AFTER the reset effect
+  // above nulls openScript on the bundle change (same-render effect order) —
+  // otherwise the reset would immediately close the requested script.
+  const pendingNavScript = useRef<{ script: string | null } | null>(null);
+  useEffect(() => {
+    if (!navRequest) return;
+    const script = navRequest.scriptPath ?? null;
+    if (navRequest.resultsVersion !== undefined) {
+      const i = bundles.findIndex(
+        (b) => b.resultsVersion === navRequest.resultsVersion,
+      );
+      if (i >= 0 && i !== Math.min(idx, bundles.length - 1)) {
+        pendingNavScript.current = { script };
+        setIdx(i);
+        return;
+      }
+    }
+    setOpenScript(script);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
+  useEffect(() => {
+    if (!pendingNavScript.current) return;
+    setOpenScript(pendingNavScript.current.script);
+    pendingNavScript.current = null;
+  }, [bundle?.dir]);
   useEffect(() => {
     if (!zoom) return;
     const onKey = (e: KeyboardEvent) => {
@@ -683,6 +716,10 @@ export default function Results({
                 <ScriptViewer
                   file={sf}
                   canAnnotate={canAnnotate}
+                  saved={bundleAnnotations.filter(
+                    (a): a is ScriptCommentAnnotation =>
+                      a.type === "script-comment" && a.script === sf.path,
+                  )}
                   onAddLineComment={(lineStart, lineEnd, excerpt, comment) =>
                     onAddScriptComment({
                       component: group.component,

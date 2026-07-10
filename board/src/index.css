@@ -170,3 +170,21 @@ mark[data-annotation] {
   color: var(--color-red-300);
   text-decoration-color: var(--color-red-700);
 }
+
+/* Click-sync flash (control surface): pulses the targeted highlight/card. */
+@keyframes annot-flash-kf {
+  0%, 55% { outline-color: rgb(217 119 6); }
+  100% { outline-color: transparent; }
+}
+.annot-flash {
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  animation: annot-flash-kf 1.6s ease-out;
+}
+:where(.dark, .dark *) .annot-flash {
+  animation-name: annot-flash-kf-dark;
+}
+@keyframes annot-flash-kf-dark {
+  0%, 55% { outline-color: rgb(251 191 36); }
+  100% { outline-color: transparent; }
+}
