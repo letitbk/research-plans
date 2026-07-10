@@ -179,5 +179,139 @@ class TestFindRoot(unittest.TestCase):
             self.assertEqual(models.find_root(p), p.resolve())
 
 
+class TestGenerate(unittest.TestCase):
+    def _generate(self, root):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = models.main(["--root", str(root), "generate"])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_default_profile_writes_three_marked_agents(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            code, out, err = self._generate(root)
+            self.assertEqual(code, 0)
+            sha = hashlib.sha256((root / "plans" / "model-profile.md").read_bytes()).hexdigest()
+            for name in ("rp-plan-reviewer", "rp-results-validator", "rp-board-reviewer"):
+                path = root / ".claude" / "agents" / f"{name}.md"
+                self.assertTrue(path.exists(), name)
+                text = path.read_text(encoding="utf-8")
+                self.assertIn(f"name: {name}", text)
+                self.assertIn("model: opus", text)
+                m = models.MARKER_RE.search(text)
+                self.assertIsNotNone(m, name)
+                self.assertEqual(m.group(1), sha)
+                self.assertNotIn("{{", text, name)  # no unsubstituted placeholders
+                self.assertIn(f"wrote .claude/agents/{name}.md", out)
+            self.assertIn("effort: medium", (root / ".claude" / "agents" / "rp-plan-reviewer.md").read_text())
+            self.assertIn("effort: low", (root / ".claude" / "agents" / "rp-results-validator.md").read_text())
+            self.assertIn("tools: Read, Grep, Glob, Bash", (root / ".claude" / "agents" / "rp-plan-reviewer.md").read_text())
+            self.assertIn("tools: Read, Grep, Glob\n", (root / ".claude" / "agents" / "rp-board-reviewer.md").read_text())
+            self.assertIn("note: .claude/agents/ was just created", out)
+
+    def test_unset_effort_drops_the_line(self):
+        profile = DEFAULT_PROFILE.replace(
+            "| results validation | opus | low | agent |",
+            "| results validation | opus | — | agent |",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp, profile=profile)
+            self._generate(root)
+            text = (root / ".claude" / "agents" / "rp-results-validator.md").read_text()
+            self.assertNotIn("effort:", text)
+            self.assertIn("model: opus", text)
+
+    def test_refuses_unmarked_user_owned_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            agents = root / ".claude" / "agents"
+            agents.mkdir(parents=True)
+            mine = agents / "rp-plan-reviewer.md"
+            mine.write_text("---\nname: rp-plan-reviewer\n---\nmy own agent\n")
+            code, out, err = self._generate(root)
+            self.assertEqual(code, 0)
+            self.assertEqual(mine.read_text(), "---\nname: rp-plan-reviewer\n---\nmy own agent\n")
+            self.assertIn("refused (user-owned, no marker)", out)
+            self.assertTrue((agents / "rp-results-validator.md").exists())
+            self.assertNotIn("note: .claude/agents/ was just created", out)
+
+    def test_marked_file_is_regenerated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            self._generate(root)
+            target = root / ".claude" / "agents" / "rp-plan-reviewer.md"
+            first = target.read_text()
+            profile_path = root / "plans" / "model-profile.md"
+            profile_path.write_text(DEFAULT_PROFILE.replace(
+                "| plan review (verdict + grade) | opus | medium | agent |",
+                "| plan review (verdict + grade) | sonnet | high | agent |",
+            ), encoding="utf-8")
+            self._generate(root)
+            second = target.read_text()
+            self.assertNotEqual(first, second)
+            self.assertIn("model: sonnet", second)
+            self.assertIn("effort: high", second)
+
+    def test_missing_agent_row_skips_that_agent_only(self):
+        profile = DEFAULT_PROFILE.replace("| board reviewer panel | opus | low | agent |\n", "")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp, profile=profile)
+            code, out, err = self._generate(root)
+            self.assertFalse((root / ".claude" / "agents" / "rp-board-reviewer.md").exists())
+            self.assertTrue((root / ".claude" / "agents" / "rp-plan-reviewer.md").exists())
+            self.assertIn("board-reviewer", err)
+
+    def test_no_profile_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp, profile=None)
+            code, out, err = self._generate(root)
+            self.assertEqual(code, 1)
+            self.assertIn("nothing to generate", err)
+
+
+class TestCheck(unittest.TestCase):
+    def _run(self, root, cmd):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = models.main(["--root", str(root), cmd])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_fresh_generation_is_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            self._run(root, "generate")
+            code, out, err = self._run(root, "check")
+            self.assertEqual((code, out), (0, ""))
+
+    def test_edited_profile_prints_hint_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            self._run(root, "generate")
+            (root / "plans" / "model-profile.md").write_text(
+                DEFAULT_PROFILE + "\nan extra line\n", encoding="utf-8"
+            )
+            code, out, err = self._run(root, "check")
+            self.assertEqual(code, 0)
+            self.assertEqual(out.strip(), models.MISMATCH_HINT)
+            self.assertEqual(out.count(models.MISMATCH_HINT), 1)
+
+    def test_no_profile_or_no_agents_is_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp, profile=None)
+            self.assertEqual(self._run(root, "check")[1], "")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)  # profile, no agents
+            self.assertEqual(self._run(root, "check")[1], "")
+
+    def test_unmarked_files_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            agents = root / ".claude" / "agents"
+            agents.mkdir(parents=True)
+            (agents / "rp-plan-reviewer.md").write_text("---\nname: rp-plan-reviewer\n---\nmine\n")
+            self.assertEqual(self._run(root, "check")[1], "")
+
+
 if __name__ == "__main__":
     unittest.main()

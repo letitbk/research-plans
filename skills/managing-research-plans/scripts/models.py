@@ -149,12 +149,71 @@ def cmd_stage(root, key):
     return 0
 
 
-def cmd_generate(root):  # implemented in a later task
-    raise NotImplementedError
+def _templates_dir():
+    return Path(__file__).resolve().parents[1] / "templates" / "agents"
 
 
-def cmd_check(root):  # implemented in a later task
-    raise NotImplementedError
+def _render(template_text, model, effort, checksum):
+    out = template_text
+    if effort is None:
+        out = re.sub(r"^effort: \{\{EFFORT\}\}\n", "", out, flags=re.M)
+    else:
+        out = out.replace("{{EFFORT}}", effort)
+    return out.replace("{{MODEL}}", model).replace("{{CHECKSUM}}", checksum)
+
+
+def cmd_generate(root):
+    path = root / PROFILE_REL
+    if not path.exists():
+        print(f"models.py: no {PROFILE_REL} — nothing to generate", file=sys.stderr)
+        return 1
+    checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+    stages, warnings = parse_profile(path.read_text(encoding="utf-8"))
+    for w in warnings:
+        print(w, file=sys.stderr)
+    agents_dir = root / ".claude" / "agents"
+    dir_existed = agents_dir.is_dir()
+    wrote_any = False
+    for key, agent in AGENT_STAGES.items():
+        rel = f".claude/agents/{agent}.md"
+        row = stages.get(key)
+        if row is None:
+            print(f"model-profile: no valid '{key}' row — {agent}.md not regenerated", file=sys.stderr)
+            continue
+        if row["mechanism"] != "agent":
+            print(
+                f"model-profile: '{key}' row has mechanism '{row['mechanism']}' — {agent}.md not regenerated",
+                file=sys.stderr,
+            )
+            continue
+        target = agents_dir / f"{agent}.md"
+        if target.exists() and not MARKER_RE.search(target.read_text(encoding="utf-8")):
+            print(f"refused (user-owned, no marker): {rel}")
+            continue
+        template = (_templates_dir() / f"{agent}.md").read_text(encoding="utf-8")
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        target.write_text(_render(template, row["model"], row["effort"], checksum), encoding="utf-8")
+        print(f"wrote {rel}")
+        wrote_any = True
+    if wrote_any and not dir_existed:
+        print("note: .claude/agents/ was just created — restart Claude Code before the new agents can be dispatched")
+    return 0
+
+
+def cmd_check(root):
+    path = root / PROFILE_REL
+    if not path.exists():
+        return 0
+    checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+    for agent in AGENT_STAGES.values():
+        target = root / ".claude" / "agents" / f"{agent}.md"
+        if not target.exists():
+            continue
+        m = MARKER_RE.search(target.read_text(encoding="utf-8"))
+        if m and m.group(1) != checksum:
+            print(MISMATCH_HINT)
+            return 0
+    return 0
 
 
 def main(argv=None):
