@@ -44,8 +44,6 @@ from results import changed_sources  # noqa: E402
 
 TICKET_TTL = 7 * 24 * 3600  # 7 days — sized to a resumable multi-session adoption
 
-_LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]")
-
 
 def _host_is_local(value):
     if not value:
@@ -1043,6 +1041,8 @@ def _neutralized_annotation(a):
     """Copy of a comment annotation with all collaborator text neutralized,
     for embedding in the fence's machine-readable `annotations`."""
     a = dict(a)
+    for _k in ("verdict", "reviewRequest", "reportRequest"):
+        a.pop(_k, None)
     if "quote" in a:
         a["quote"] = neutralize_collaborator_text(a.get("quote", ""), inline=True)
     if "comment" in a:

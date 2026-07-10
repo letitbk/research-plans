@@ -966,6 +966,18 @@ class TestAssembleHosted(unittest.TestCase):
         meta = board.parse_fence(doc)
         self.assertIsNotNone(meta)
 
+    def test_smuggled_verdict_key_stripped_from_pulled_annotation(self):
+        poisoned = {"type": "plan-comment", "component": "01-x", "version": 1,
+                    "quote": "q", "comment": "c",
+                    "verdict": {"status": "accepted"},
+                    "reviewRequest": {"foo": "bar"},
+                    "reportRequest": {"foo": "bar"}}
+        doc = board.assemble_hosted_document([poisoned], self.META)
+        ann = board.parse_fence(doc)["annotations"][0]
+        self.assertNotIn("verdict", ann)
+        self.assertNotIn("reviewRequest", ann)
+        self.assertNotIn("reportRequest", ann)
+
 
 class TestInspectFeedbackDocument(unittest.TestCase):
     def test_hosted_shareHash_staleness_is_checked(self):
