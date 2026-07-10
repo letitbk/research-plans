@@ -1233,5 +1233,181 @@ class TestArgGuards(unittest.TestCase):
         board.check_action_exclusivity(board.parse_args(["--pull"]))  # no raise
 
 
+class TestLifecycle(unittest.TestCase):
+    """--web-connect / --web-clear / --set-password and generate_passphrase()."""
+
+    def setUp(self):
+        self._orig_vercel = board._vercel
+        self._orig_node_preflight = board.node_preflight
+        self._orig_urlopen = board.urllib.request.urlopen
+
+    def tearDown(self):
+        board._vercel = self._orig_vercel
+        board.node_preflight = self._orig_node_preflight
+        board.urllib.request.urlopen = self._orig_urlopen
+
+    def test_generate_passphrase_is_four_hyphen_words(self):
+        phrase = board.generate_passphrase()
+        parts = phrase.split("-")
+        self.assertEqual(len(parts), 4)
+        for w in parts:
+            self.assertIn(w, board._PASSPHRASE_WORDS)
+
+    def test_web_clear_without_force_dies(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.write_web_config(root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k"})
+            try:
+                with self.assertRaises(SystemExit):
+                    board.web_clear(root, board.parse_args(["--web-clear"]))
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_web_clear_missing_config_dies(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data" / "empty")
+            try:
+                with self.assertRaises(SystemExit):
+                    board.web_clear(root, board.parse_args(["--web-clear", "--force"]))
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_web_clear_posts_with_pull_key_header_when_forced(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.write_web_config(
+                root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k-secret"})
+            captured = {}
+
+            def fake_urlopen(req, timeout=30):
+                captured["url"] = req.full_url
+                captured["method"] = req.get_method()
+                captured["key"] = req.headers.get("X-board-key")
+
+                class _Resp:
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *a):
+                        return False
+
+                    def read(self):
+                        return b'{"ok": true, "deleted": 2}'
+                return _Resp()
+
+            board.urllib.request.urlopen = fake_urlopen
+            try:
+                import io, contextlib
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    board.web_clear(root, board.parse_args(["--web-clear", "--force"]))
+                self.assertEqual(captured["url"], "https://x.vercel.app/api/clear")
+                self.assertEqual(captured["method"], "POST")
+                self.assertEqual(captured["key"], "k-secret")
+                self.assertIn("deleted", out.getvalue())
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_web_connect_stops_when_node_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            board.node_preflight = lambda: "install node"
+            with self.assertRaises(SystemExit):
+                board.web_connect(root, board.parse_args(["--web-connect"]))
+
+    def test_web_connect_dies_when_link_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            board.node_preflight = lambda: None
+            board._vercel = lambda argv, cwd=None: (1, "no linked project")
+            with self.assertRaises(SystemExit):
+                board.web_connect(root, board.parse_args(["--web-connect"]))
+
+    def test_web_connect_recovers_pull_key_and_writes_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.node_preflight = lambda: None
+
+            def fake_vercel(argv, cwd=None):
+                if argv[0] == "link":
+                    return 0, "Linked"
+                if argv[0] == "env":
+                    (Path(cwd) / ".env.local").write_text(
+                        'BOARD_URL="https://proj-board.vercel.app"\n'
+                        'BOARD_PULL_KEY="recovered-key"\n',
+                        encoding="utf-8")
+                    return 0, "pulled"
+                return 1, "unexpected argv"
+
+            board._vercel = fake_vercel
+            try:
+                import io, contextlib
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    board.web_connect(root, board.parse_args(["--web-connect"]))
+                cfg = board.read_web_config(root)
+                self.assertEqual(cfg["pullKey"], "recovered-key")
+                self.assertEqual(cfg["url"], "https://proj-board.vercel.app")
+                self.assertIn("Reconnected", out.getvalue())
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_web_connect_dies_when_pull_key_absent(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.node_preflight = lambda: None
+
+            def fake_vercel(argv, cwd=None):
+                if argv[0] == "link":
+                    return 0, "Linked"
+                if argv[0] == "env":
+                    (Path(cwd) / ".env.local").write_text("SOME_OTHER=1\n", encoding="utf-8")
+                    return 0, "pulled"
+                return 1, "unexpected argv"
+
+            board._vercel = fake_vercel
+            try:
+                with self.assertRaises(SystemExit):
+                    board.web_connect(root, board.parse_args(["--web-connect"]))
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_set_password_missing_config_dies(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data" / "empty")
+            try:
+                with self.assertRaises(SystemExit):
+                    board.set_password(root, board.parse_args(["--set-password"]))
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_set_password_with_config_prints_guidance(self):
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.write_web_config(root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k"})
+            try:
+                import io, contextlib
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    board.set_password(root, board.parse_args(["--set-password"]))
+                self.assertIn("vercel env add", out.getvalue())
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+
 if __name__ == "__main__":
     unittest.main()

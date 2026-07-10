@@ -24,6 +24,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import signal
 import subprocess
@@ -961,6 +962,71 @@ def pull(root, args):
     _pulled_path(root).write_text(json.dumps(sorted(pulled | {c["id"] for c in new})))
     for doc in docs:
         inspect_feedback_document(root, doc)   # route (prints)
+
+
+# Small embedded wordlist for generate_passphrase() — diceware-style, not
+# meant to be exhaustive; just enough entropy for a shareable board password.
+_PASSPHRASE_WORDS = [
+    "amber", "birch", "canyon", "cedar", "coral", "cove", "delta", "dune",
+    "ember", "fern", "flint", "frost", "granite", "harbor", "haven", "lumen",
+    "maple", "meadow", "moss", "opal", "pine", "quartz", "quill", "ridge",
+    "river", "sable", "slate", "thicket", "tundra", "willow", "wren", "brook",
+]
+
+
+def generate_passphrase():
+    """4 hyphen-joined words from a small embedded wordlist. Uses secrets.choice
+    (cryptographically strong) rather than an unseeded PRNG, since this backs a
+    real shareable board password."""
+    return "-".join(secrets.choice(_PASSPHRASE_WORDS) for _ in range(4))
+
+
+def web_connect(root, args):
+    msg = node_preflight()
+    if msg:
+        die(msg)
+    out = root / "plans" / ".board-web"
+    # Link to the existing project and pull env into a temp dir to recover the key.
+    materialize_web_dir(root)
+    rc, _ = _vercel(["link", "--yes"], cwd=str(out))
+    if rc != 0:
+        die("Could not link to an existing Vercel project. If you have none, run --publish-web.")
+    rc, _ = _vercel(["env", "pull", ".env.local"], cwd=str(out))
+    envtext = (out / ".env.local").read_text() if (out / ".env.local").exists() else ""
+    m = re.search(r'BOARD_PULL_KEY=(?:"?)([^"\n]+)', envtext)
+    url_m = re.search(r'BOARD_URL=(?:"?)([^"\n]+)', envtext)
+    if not m:
+        die("Linked, but BOARD_PULL_KEY not found in the project env.")
+    write_web_config(root, {"url": (url_m.group(1) if url_m else ""),
+                            "projectName": out.name, "pullKey": m.group(1)})
+    print("Reconnected to the existing web board; pull key recovered.")
+
+
+def web_clear(root, args):
+    cfg = read_web_config(root)
+    if cfg is None:
+        die("No web board configured.")
+    if not getattr(args, "force", False):
+        die("This deletes ALL collaborator comments on the hosted board. Re-run with --force.")
+    url = cfg["url"].rstrip("/") + "/api/clear"
+    try:
+        req = urllib.request.Request(url, method="POST", headers={"x-board-key": cfg["pullKey"]})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print(resp.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError) as e:
+        die("Clear failed: %s" % e)
+
+
+def set_password(root, args):
+    # Generates a new passphrase + rotates the session secret, via `vercel env add`
+    # (stdin, never args), then redeploys. Interactive-ish; the conversational
+    # command drives this. The CLI validates config presence and prints guidance.
+    cfg = read_web_config(root)
+    if cfg is None:
+        die("No web board configured. Run --publish-web first.")
+    print("Rotate the passphrase from the conversational flow: it generates a new "
+          "passphrase and BOARD_SESSION_SECRET, sets them with `vercel env add` "
+          "(reading from stdin), and redeploys. See /research-plans:board.")
 
 
 def export(root, args):
