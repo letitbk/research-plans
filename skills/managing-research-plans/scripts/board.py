@@ -1568,13 +1568,66 @@ def publish_pages(root, args):
 
 
 def collect_pending(root):
+    """Non-destructive PEEK at the pending order. Deletion is a separate,
+    explicit --ack step run only after the routed work finished — a crash
+    mid-routing must re-offer the order on the next launch."""
     pending = root / "plans" / ".board-feedback.md"
     if not pending.is_file():
         print("No pending feedback.", file=sys.stderr)
         sys.exit(3)
     print(pending.read_text(encoding="utf-8"))
-    pending.unlink()
     sys.exit(0)
+
+
+def ack_pending(root):
+    """Acknowledge (delete) the pending order after its work completed."""
+    pending = root / "plans" / ".board-feedback.md"
+    if not pending.is_file():
+        print("board: nothing to acknowledge.", file=sys.stderr)
+        sys.exit(3)
+    pending.unlink()
+    print("board: acknowledged.", file=sys.stderr)
+    sys.exit(0)
+
+
+ACTION_KEYS = ("signoff", "verdict", "reviewRequest", "reportRequest", "reopen")
+
+_ACTION_HEADING_RE = re.compile(
+    r"(?m)^(##\s+(?:SIGNOFF|VERDICT|REVIEW REQUEST|REPORT REQUEST|"
+    r"REOPEN REQUEST)\s*:)")
+
+
+def strip_action_keys_from_document(doc):
+    """Remove researcher-action keys from a hand-delivered document's fence
+    (top level and per annotation). Returns (doc, sorted stripped keys).
+    Multi-fence/fence-less docs come back unchanged — parse_fence already
+    refuses to route the former."""
+    meta = parse_fence(doc)
+    if meta is None:
+        return doc, []
+    stripped = set()
+    for k in ACTION_KEYS:
+        if meta.pop(k, None) is not None:
+            stripped.add(k)
+    for ann in meta.get("annotations") or []:
+        if isinstance(ann, dict):
+            for k in ACTION_KEYS:
+                if ann.pop(k, None) is not None:
+                    stripped.add(k)
+    if not stripped:
+        return doc, []
+    last = None
+    for last in FENCE_RE.finditer(doc):
+        pass
+    new_block = "```json board-feedback\n%s\n```" % json.dumps(meta, indent=1)
+    return doc[:last.start()] + new_block + doc[last.end():], sorted(stripped)
+
+
+def neutralize_action_headings(doc):
+    """Demote action headings to quotes in hand-delivered markdown — the
+    command routes by heading as well as fence key. Returns (doc, count)."""
+    out, n = _ACTION_HEADING_RE.subn(r"> \1", doc)
+    return out, n
 
 
 def parse_fence(doc):
@@ -1771,6 +1824,17 @@ def collect_file(root, path):
     if not p.is_file():
         die("no feedback file at %s" % p)
     doc = p.read_text(encoding="utf-8", errors="replace")
+    # Hand-delivered ingress never carries action authority: strip the keys
+    # and demote the headings. (The live pending file goes through
+    # collect_pending and is NOT sanitized — it is server-written.)
+    doc, stripped = strip_action_keys_from_document(doc)
+    doc, demoted = neutralize_action_headings(doc)
+    if stripped or demoted:
+        print("board: stripped researcher-action markers from hand-delivered "
+              "file (%s%s)" % (", ".join(stripped) if stripped else "",
+                               ("; %d heading(s) demoted" % demoted)
+                               if demoted else ""),
+              file=sys.stderr)
     return inspect_feedback_document(root, doc)
 
 
@@ -1913,6 +1977,8 @@ def parse_args(argv=None):
     ap.add_argument("--publish", action="store_true",
                     help="publish the static board to the repo's GitHub Pages (gh-pages branch)")
     ap.add_argument("--collect", nargs="?", const="PENDING", default=None, metavar="FILE")
+    ap.add_argument("--ack", action="store_true",
+                    help="acknowledge (delete) the routed pending order")
     ap.add_argument("--gate", default=None, metavar="SLUG/vN")
     ap.add_argument("--gate-batch", action="store_true",
                     help="one-at-a-time sign-off over all pending drafts")
@@ -1932,7 +1998,7 @@ def parse_args(argv=None):
 
 
 _ACTION_FLAGS = ("export", "share", "publish", "publish_web", "pull",
-                 "web_connect", "web_clear", "set_password")
+                 "web_connect", "web_clear", "set_password", "ack")
 
 
 def selected_actions(args):
@@ -1971,6 +2037,8 @@ def main():
             collect_pending(root)
         else:
             collect_file(root, args.collect)
+    elif args.ack:
+        ack_pending(root)
     elif args.share is not None:
         share(root, args)
     elif args.export is not None:
