@@ -678,6 +678,43 @@ def publish_token_ok(body, token):
     return body.get("token") == token
 
 
+def draft_map_from_payload(payload):
+    """Sign-off eligibility = exactly the drafts the served board displays.
+    Derived from the payload object itself (never a second disk glob), so a
+    ticket can only ever bind content the researcher was shown."""
+    out = {}
+    for group in (payload.get("files", {}) or {}).get("executionPlans", []) or []:
+        d = group.get("draft")
+        if not d or "content" not in d or "proposedVersion" not in d:
+            continue
+        out[(group["component"], int(d["proposedVersion"]))] = {
+            "path": d["path"],
+            "hash": hashlib.sha256(
+                normalize_plan(d["content"]).encode("utf-8")).hexdigest(),
+        }
+    return out
+
+
+def validate_signoff_action(action, draft_map):
+    """Typed signoff request -> (slug, version, decision, reason).
+    Raises ValueError('bad-action') for anything not displayed by this board."""
+    if not isinstance(action, dict) or action.get("kind") != "signoff":
+        raise ValueError("bad-action")
+    slug = action.get("component")
+    ver = action.get("version")
+    decision = action.get("decision")
+    reason = action.get("reason")
+    if decision not in ("approve", "request-changes"):
+        raise ValueError("bad-action")
+    if not isinstance(slug, str) or isinstance(ver, bool) or not isinstance(ver, int):
+        raise ValueError("bad-action")
+    if (slug, ver) not in draft_map:
+        raise ValueError("bad-action")
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("bad-action")
+    return slug, ver, decision, reason
+
+
 def inject_fence_key(doc, key, value):
     """Set one key in the document's board-feedback fence, preserving all
     surrounding text. Fence-less documents gain a minimal fence at the end.
@@ -732,6 +769,7 @@ def serve(root, payload, args):
     html_bytes = html.encode("utf-8")
     done = threading.Event()
     result = {"approved": [], "rejected": []}
+    draft_map = draft_map_from_payload(payload)
     slot = {"actionId": None}
     slot_lock = threading.Lock()
 
@@ -841,6 +879,43 @@ def serve(root, payload, args):
                     self.send_response(400)
                     self.end_headers()
                     return
+                action = body.get("action")
+                ticket_args = None
+                if action is not None:
+                    try:
+                        slug_a, ver_a, decision_a, _reason_a = \
+                            validate_signoff_action(action, draft_map)
+                    except ValueError:
+                        self._json(400, {"error": "bad-action"})
+                        return
+                    if decision_a == "approve":
+                        entry = draft_map[(slug_a, ver_a)]
+                        try:
+                            dtext = (root / entry["path"]).read_text(
+                                encoding="utf-8")
+                        except OSError:
+                            dtext = None
+                        now_hash = None if dtext is None else hashlib.sha256(
+                            normalize_plan(dtext).encode("utf-8")).hexdigest()
+                        if now_hash != entry["hash"]:
+                            # The displayed payload no longer matches disk:
+                            # refuse the ticket, then exit 4 so the command
+                            # loop relaunches with a fresh payload.
+                            self._json(409, {"error": "stale-draft"})
+                            result["doc"] = ""
+                            result["exit"] = 4
+                            done.set()
+                            return
+                        _tail = [ln.rstrip() for ln in
+                                 dtext.replace("\r\n", "\n").split("\n")]
+                        while _tail and _tail[-1] == "":
+                            _tail.pop()
+                        if _tail and _tail[-1].startswith("Signed off:"):
+                            # normalize_plan is trailer-invariant, so the hash
+                            # cannot distinguish trailer identity — refuse.
+                            self._json(400, {"error": "trailer-in-draft"})
+                            return
+                        ticket_args = (slug_a, ver_a, dtext)
                 aid = accept_order(
                     lambda aid: document_from_body(body, payload, action_id=aid),
                     0, True)
@@ -848,6 +923,9 @@ def serve(root, payload, args):
                     self._json(409, {"error": "already-accepted",
                                      "actionId": slot["actionId"]})
                     return
+                if ticket_args is not None:
+                    write_ticket(root, ticket_args[0], ticket_args[1],
+                                 ticket_args[2], aid)
                 self._json(200, {"ok": True, "actionId": aid,
                                  "bootId": boot_id, "projectId": proj_id})
                 done.set()

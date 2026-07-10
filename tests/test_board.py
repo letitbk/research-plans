@@ -2025,5 +2025,123 @@ class TestOrderSlot(unittest.TestCase):
             proc.terminate()
 
 
+class TestSignoffAction(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+        make_project(self.root)
+        self.draft = (self.root / "plans" / "execution" / "01-data-prep"
+                      / ".draft-v2.md")
+        self.ticket = (self.root / "plans" / "execution"
+                       / ".import-approved-01-data-prep-v2")
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    def _signoff_body(self, component="01-data-prep", version=2,
+                      decision="approve", reason=None):
+        action = {"kind": "signoff", "component": component,
+                  "version": version, "decision": decision}
+        if reason is not None:
+            action["reason"] = reason
+        return {"annotations": [], "feedbackMarkdown": "via cluster",
+                "payloadHash": "x", "action": action}
+
+    def test_approve_writes_displayed_draft_ticket(self):
+        import hashlib
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        self.assertEqual(status, 200)
+        self.assertTrue(self.ticket.exists())
+        tdoc = json.loads(self.ticket.read_text(encoding="utf-8"))
+        self.assertEqual(tdoc["slug"], "01-data-prep")
+        self.assertEqual(tdoc["version"], 2)
+        want = hashlib.sha256(board.normalize_plan(
+            self.draft.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
+        self.assertEqual(tdoc["contentHash"], want)
+        self.assertEqual(tdoc["batchId"], body["actionId"])
+
+    def test_stale_draft_rejected_exit_4_no_ticket(self):
+        proc, url = spawn_board(self.root, "--timeout", "15")
+        try:
+            self.draft.write_text(
+                self.draft.read_text(encoding="utf-8") + "\nEDITED AFTER BOOT\n",
+                encoding="utf-8")
+            status, body, _ = http_json(url, "/api/feedback",
+                                        body=self._signoff_body())
+            self.assertEqual(status, 409)
+            self.assertEqual(body["error"], "stale-draft")
+            self.assertFalse(self.ticket.exists())
+            self.assertEqual(proc.wait(timeout=15), 4)
+        finally:
+            proc.terminate()
+
+    def test_deleted_draft_rejected_exit_4(self):
+        proc, url = spawn_board(self.root, "--timeout", "15")
+        try:
+            self.draft.unlink()
+            status, body, _ = http_json(url, "/api/feedback",
+                                        body=self._signoff_body())
+            self.assertEqual(status, 409)
+            self.assertEqual(body["error"], "stale-draft")
+            self.assertEqual(proc.wait(timeout=15), 4)
+        finally:
+            proc.terminate()
+
+    def test_undisplayed_draft_version_400(self):
+        (self.draft.parent / ".draft-v1.md").write_text(
+            "# old draft\n", encoding="utf-8")
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(url, "/api/feedback",
+                                    body=self._signoff_body(version=1))
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "bad-action")
+
+    def test_unknown_component_400(self):
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(
+            url, "/api/feedback", body=self._signoff_body(component="99-nope"))
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "bad-action")
+
+    def test_trailer_in_draft_400(self):
+        self.draft.write_text(
+            "# Data prep v2 draft\n\nDo it better.\n\nSigned off: sneaky\n",
+            encoding="utf-8")
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "trailer-in-draft")
+        self.assertFalse(self.ticket.exists())
+
+    def test_request_changes_never_writes_ticket(self):
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(
+            url, "/api/feedback",
+            body=self._signoff_body(decision="request-changes", reason="tighten"))
+        self.assertEqual(status, 200)
+        self.assertFalse(self.ticket.exists())
+
+    def test_ticket_admits_signed_write_e2e(self):
+        # setUp already ran make_project; add the gate's CLAUDE.md marker.
+        (self.root / "CLAUDE.md").write_text(
+            "<!-- research-plans:start -->\n", encoding="utf-8")
+        url, info, t = serve_in_thread(self.root, timeout=15)
+        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        self.assertEqual(status, 200)
+        signed = (self.draft.read_text(encoding="utf-8").rstrip("\n")
+                  + "\n\nSigned off: BK, 2026-07-10\n")
+        event = {"tool_name": "Write", "cwd": str(self.root),
+                 "tool_input": {
+                     "file_path": str(self.draft.parent / "v2.md"),
+                     "content": signed}}
+        p = subprocess.run(
+            [sys.executable, str(SCRIPTS / "signoff_gate.py")],
+            input=json.dumps(event), capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        decision = json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"]
+        self.assertEqual(decision, "allow")
+
+
 if __name__ == "__main__":
     unittest.main()
