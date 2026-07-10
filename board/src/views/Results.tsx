@@ -9,6 +9,7 @@ import AnnotationLayer, {
 import ReviewMenu from "../components/ReviewMenu";
 import { Notice } from "./Tracker";
 import { parseExecutionPlan, preRenewalSlugs } from "../lib/parse";
+import { actionsVisible } from "../lib/actions";
 import type {
   Annotation,
   BoardData,
@@ -20,6 +21,7 @@ import type {
   ScriptCommentAnnotation,
   ValidationBlock,
   VerdictRequest,
+  ReopenRequest,
 } from "../lib/types";
 
 function verdictBadge(b: ResultsBundle): { label: string; cls: string } {
@@ -143,6 +145,8 @@ export default function Results({
   focusResults,
   onRequestReview,
   onRequestReport,
+  onReopen,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -161,6 +165,13 @@ export default function Results({
   focusResults: number | null;
   onRequestReview?: (req: ReviewRequest) => void;
   onRequestReport?: (req: ReportRequest) => void;
+  onReopen?: (req: ReopenRequest) => void;
+  // Click-sync (control surface): one-shot navigation to a bundle/script.
+  navRequest?: {
+    token: number;
+    resultsVersion?: number;
+    scriptPath?: string;
+  } | null;
 }) {
   const groups = data.files.executionPlans.filter(
     (g) => (g.results ?? []).length > 0,
@@ -192,6 +203,32 @@ export default function Results({
   const [verdictComment, setVerdictComment] = useState("");
   const [zoom, setZoom] = useState<{ url: string; title: string } | null>(null);
   useEffect(() => setOpenScript(null), [bundle?.dir]);
+  // Apply a click-sync navigation request. When the request also switches the
+  // bundle, its script target is stashed and applied AFTER the reset effect
+  // above nulls openScript on the bundle change (same-render effect order) —
+  // otherwise the reset would immediately close the requested script.
+  const pendingNavScript = useRef<{ script: string | null } | null>(null);
+  useEffect(() => {
+    if (!navRequest) return;
+    const script = navRequest.scriptPath ?? null;
+    if (navRequest.resultsVersion !== undefined) {
+      const i = bundles.findIndex(
+        (b) => b.resultsVersion === navRequest.resultsVersion,
+      );
+      if (i >= 0 && i !== Math.min(idx, bundles.length - 1)) {
+        pendingNavScript.current = { script };
+        setIdx(i);
+        return;
+      }
+    }
+    setOpenScript(script);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
+  useEffect(() => {
+    if (!pendingNavScript.current) return;
+    setOpenScript(pendingNavScript.current.script);
+    pendingNavScript.current = null;
+  }, [bundle?.dir]);
   useEffect(() => {
     if (!zoom) return;
     const onKey = (e: KeyboardEvent) => {
@@ -341,7 +378,7 @@ export default function Results({
               </button>
             );
           })}
-          {canPost && (onRequestReview || onRequestReport) && (
+          {actionsVisible(data) && (onRequestReview || onRequestReport) && (
             <div className="ml-auto flex items-center gap-2">
               {onRequestReport && (
                 <button
@@ -421,7 +458,7 @@ export default function Results({
               pre-renewal
             </span>
           )}
-          {canPost && !bundle.verdict && (
+          {actionsVisible(data) && !bundle.verdict && (
             <span className="ml-auto flex items-center gap-2">
               <input
                 className="w-56 rounded-md border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs"
@@ -454,6 +491,30 @@ export default function Results({
                 }
               >
                 Request changes
+              </button>
+            </span>
+          )}
+          {actionsVisible(data) && bundle.verdict && onReopen && (
+            <span className="ml-auto flex items-center gap-2">
+              <input
+                className="w-56 rounded-md border border-stone-300 dark:border-stone-600 px-2 py-1 text-xs"
+                placeholder="Reopen — why? (required)"
+                value={verdictComment}
+                onChange={(e) => setVerdictComment(e.target.value)}
+              />
+              <button
+                className="rounded-md border border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-40"
+                disabled={!verdictComment.trim()}
+                title="Files a change request against this accepted bundle; the recorded verdict is never modified."
+                onClick={() =>
+                  onReopen({
+                    component: group.component,
+                    resultsVersion: bundle.resultsVersion,
+                    reason: verdictComment.trim(),
+                  })
+                }
+              >
+                Reopen — request changes
               </button>
             </span>
           )}
@@ -683,6 +744,10 @@ export default function Results({
                 <ScriptViewer
                   file={sf}
                   canAnnotate={canAnnotate}
+                  saved={bundleAnnotations.filter(
+                    (a): a is ScriptCommentAnnotation =>
+                      a.type === "script-comment" && a.script === sf.path,
+                  )}
                   onAddLineComment={(lineStart, lineEnd, excerpt, comment) =>
                     onAddScriptComment({
                       component: group.component,

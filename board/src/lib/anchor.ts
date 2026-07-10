@@ -215,6 +215,7 @@ function paintOne(
     // surroundContents fails across element boundaries; extract/wrap instead.
     const mark = document.createElement("mark");
     mark.setAttribute("data-annotation", a.id);
+    mark.setAttribute("tabindex", "0");
     range.surroundContents(mark);
     return true;
   } catch {
@@ -238,6 +239,7 @@ function paintOne(
         r.setEnd(n, to);
         const mark = document.createElement("mark");
         mark.setAttribute("data-annotation", a.id);
+        mark.setAttribute("tabindex", "0");
         r.surroundContents(mark);
       }
       return true;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Markdown from "../components/Markdown";
 import AnnotationLayer, {
   GeneralCommentBox,
@@ -21,6 +21,7 @@ export default function Scorecard({
   onAddDocComment,
   onPaintResult,
   onAddGeneral,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -32,9 +33,17 @@ export default function Scorecard({
     scopeAbsent: Set<string>,
   ) => void;
   onAddGeneral: (view: string, comment: string) => void;
+  navRequest?: { token: number; reviewPath?: string } | null;
 }) {
   const reviews = data.files.reviews;
   const [idx, setIdx] = useState(reviews.length - 1);
+  // Click-sync: resolve a card's review path to this view's index.
+  useEffect(() => {
+    if (!navRequest?.reviewPath) return;
+    const i = reviews.findIndex((r) => r.path === navRequest.reviewPath);
+    if (i >= 0) setIdx(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
 
   if (reviews.length === 0) {
     return (

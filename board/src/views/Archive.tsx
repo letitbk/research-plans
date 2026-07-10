@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Markdown from "../components/Markdown";
 import AnnotationLayer, {
   GeneralCommentBox,
@@ -36,6 +36,7 @@ export default function Archive({
   onAddGeneral,
   onOpenComponent,
   onOpenResults,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -49,9 +50,17 @@ export default function Archive({
   onAddGeneral: (view: string, comment: string) => void;
   onOpenComponent: (slug: string, name: string) => void;
   onOpenResults: (slug: string) => void;
+  navRequest?: { token: number; archivePath?: string } | null;
 }) {
   const archives = data.files.archives ?? [];
   const [idx, setIdx] = useState(Math.max(0, archives.length - 1));
+  // Click-sync: resolve a card's archive path to this view's index.
+  useEffect(() => {
+    if (!navRequest?.archivePath) return;
+    const i = archives.findIndex((a) => a.path === navRequest.archivePath);
+    if (i >= 0) setIdx(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
   const archive = archives[Math.min(idx, archives.length - 1)] ?? null;
 
   if (!archive) {

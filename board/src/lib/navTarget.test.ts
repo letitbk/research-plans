@@ -1,0 +1,93 @@
+import { describe, it, expect } from "vitest";
+import { navTargetFor } from "./navTarget";
+import type { Annotation, BoardData } from "./types";
+
+const data = {} as BoardData; // navTargetFor is annotation-driven today
+
+function t(a: Record<string, unknown>) {
+  return navTargetFor(a as unknown as Annotation, data);
+}
+
+describe("navTargetFor", () => {
+  it("plan comment -> plans tab + plan path", () => {
+    expect(
+      t({
+        id: "1", type: "plan-comment", component: "01-x", version: 2,
+        planPath: "plans/execution/01-x/.draft-v2.md", anchored: true,
+      }),
+    ).toMatchObject({
+      tab: "plans", component: "01-x",
+      planPath: "plans/execution/01-x/.draft-v2.md",
+      annotationId: "1", anchored: true,
+    });
+  });
+
+  it("result comment -> results tab + bundle version", () => {
+    expect(
+      t({
+        id: "2", type: "result-comment", component: "01-x", resultsVersion: 3,
+        target: { kind: "artifact", artifactId: "fig1" }, anchored: true,
+      }),
+    ).toMatchObject({ tab: "results", resultsVersion: 3, scriptPath: undefined });
+  });
+
+  it("result comment on a provenance script surface opens the script", () => {
+    expect(
+      t({
+        id: "3", type: "result-comment", component: "01-x", resultsVersion: 3,
+        target: {
+          kind: "report", quote: "q", occurrenceIndex: 0,
+          surfaceScope: "provenance-script:scripts/fit.R",
+        },
+      }),
+    ).toMatchObject({ scriptPath: "scripts/fit.R" });
+  });
+
+  it("script comment -> results + open script", () => {
+    expect(
+      t({
+        id: "4", type: "script-comment", component: "01-x", resultsVersion: 1,
+        script: "scripts/clean.py", lineStart: 3, lineEnd: 5,
+      }),
+    ).toMatchObject({
+      tab: "results", scriptPath: "scripts/clean.py", anchored: true,
+    });
+  });
+
+  it("timeline doc comment clears the filter", () => {
+    expect(
+      t({
+        id: "5", type: "doc-comment", view: "timeline", docKey: "timeline",
+        anchored: true,
+      }),
+    ).toMatchObject({ tab: "timeline", clearTimelineFilter: true });
+  });
+
+  it("archive doc comment strips the docKey prefix", () => {
+    expect(
+      t({
+        id: "6", type: "doc-comment", view: "archive",
+        docKey: "archive:plans/archive/2026-07-01-master-plan.md",
+        anchored: false,
+      }),
+    ).toMatchObject({
+      tab: "archive",
+      archivePath: "plans/archive/2026-07-01-master-plan.md",
+      anchored: false,
+    });
+  });
+
+  it("reviews doc comment targets the review path", () => {
+    expect(
+      t({
+        id: "7", type: "doc-comment", view: "reviews",
+        docKey: "plans/reviews/review-01.md", anchored: true,
+      }),
+    ).toMatchObject({ tab: "reviews", reviewPath: "plans/reviews/review-01.md" });
+  });
+
+  it("general comments navigate without a highlight", () => {
+    expect(t({ id: "8", type: "general", view: "tracker", comment: "c" }))
+      .toMatchObject({ tab: "tracker", anchored: false });
+  });
+});

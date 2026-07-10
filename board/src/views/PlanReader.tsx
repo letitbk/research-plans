@@ -11,6 +11,8 @@ import {
   parseServes,
   preRenewalSlugs,
 } from "../lib/parse";
+import { actionsVisible, planActionState } from "../lib/actions";
+import RequestChangesButton from "../components/RequestChangesButton";
 import type {
   Annotation,
   BoardData,
@@ -18,6 +20,7 @@ import type {
   ExecutionPlanGroup,
   PlanCommentAnnotation,
   ReviewRequest,
+  SignoffRequest,
 } from "../lib/types";
 
 type DocKind = "signed" | "workingDraft" | "draftSnapshot";
@@ -50,6 +53,8 @@ export default function PlanReader({
   onOpenResults,
   canPost,
   onRequestReview,
+  onSignoff,
+  navRequest,
 }: {
   data: BoardData;
   canAnnotate: boolean;
@@ -67,6 +72,10 @@ export default function PlanReader({
   onOpenResults: (slug: string) => void;
   canPost?: boolean;
   onRequestReview?: (req: ReviewRequest) => void;
+  onSignoff?: (req: SignoffRequest) => void;
+  // Click-sync (control surface): one-shot navigation request from a feedback
+  // card. Internal selection stays authoritative; each new token overrides.
+  navRequest?: { token: number; planPath?: string } | null;
 }) {
   const groups = data.files.executionPlans;
   const preRenewal = preRenewalSlugs(data);
@@ -144,6 +153,14 @@ export default function PlanReader({
 
   const [docIdx, setDocIdx] = useState(docs.length - 1);
   useEffect(() => setDocIdx(docs.length - 1), [group?.component, docs.length]);
+  // Apply a click-sync navigation request: resolve the target path to this
+  // view's own index. User clicks afterwards still work (state stays local).
+  useEffect(() => {
+    if (!navRequest?.planPath) return;
+    const i = docs.findIndex((d) => d.path === navRequest.planPath);
+    if (i >= 0) setDocIdx(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navRequest?.token]);
   const curIdx = Math.min(docIdx, docs.length - 1);
   const doc = docs[curIdx] ?? null;
 
@@ -298,7 +315,29 @@ export default function PlanReader({
             ),
           )}
           <div className="ml-auto flex items-center gap-2">
-            {canPost && !data.gate && onRequestReview && doc.docKind !== "draftSnapshot" && (
+            {actionsVisible(data) && onSignoff && doc.docKind === "workingDraft" && group && (() => {
+              const st = planActionState(data, group.component, annotations);
+              if (st.kind !== "approve") return null;
+              return (
+                <span className="flex items-center gap-1">
+                  <button
+                    className="rounded border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950 px-2 py-0.5 text-xs font-medium text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-40"
+                    disabled={st.blockedByComments}
+                    title={st.blockedByComments ? "Send or delete the pending comments on this draft first" : undefined}
+                    onClick={() => onSignoff({ component: group.component, version: st.version as number, decision: "approve" })}
+                  >
+                    Approve v{st.version}
+                  </button>
+                  <RequestChangesButton
+                    requireReason={!st.blockedByComments}
+                    onSubmit={(reason) =>
+                      onSignoff({ component: group.component, version: st.version as number, decision: "request-changes", reason })
+                    }
+                  />
+                </span>
+              );
+            })()}
+            {actionsVisible(data) && onRequestReview && doc.docKind !== "draftSnapshot" && (
               <ReviewMenu
                 onPick={(agent) =>
                   onRequestReview({

@@ -7,19 +7,24 @@ Stdlib only, Python 3.9+. Modes:
   --share [PATH]     write an annotatable remote board for collaborators
                      (default plans/board-share.html; --focus prunes to one component)
   --publish          push the static board to the repo's GitHub Pages (gh-pages)
-  --collect          print and delete pending feedback from an interrupted session
+  --collect          print pending feedback from an interrupted session (a
+                     non-destructive peek; delete it with --ack after routing)
   --collect FILE     print a collaborator's feedback file (never deletes it;
-                     stderr notes STALE if plans changed since the share)
+                     researcher-action keys/headings are stripped; stderr
+                     notes STALE if plans changed since the share)
+  --ack              acknowledge (delete) the routed pending order
 
 Exit codes: 0 feedback delivered / export or share written / feedback collected;
-1 usage or environment error; 2 timeout with no feedback; 3 nothing to collect;
-130 cancelled.
+1 usage or environment error; 2 timeout with no feedback; 3 nothing to
+collect/acknowledge; 4 stale payload (an approve targeted a draft that changed
+on disk — relaunch to regenerate); 130 cancelled.
 """
 
 import argparse
 import base64
 import datetime
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
@@ -551,13 +556,85 @@ def ensure_gitignore(plans_dir):
         gi.write_text("\n".join(content).strip() + "\n", encoding="utf-8")
 
 
-def acquire_lock(plans_dir, force):
+def derive_port(root):
+    """Stable per-project default port: 41000 + sha256(canonical root) % 1000."""
+    digest = hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()
+    return 41000 + int(digest, 16) % 1000
+
+
+def project_id(root):
+    """Stable public project identity (same digest input as derive_port)."""
+    return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:16]
+
+
+def token_ok(body, expected):
+    """Constant-time per-boot board token check for mutating routes.
+    NOT yet enforced in do_POST — enforcement flips atomically with the
+    client senders + template rebuild (plan 2/3 Task 6)."""
+    return hmac.compare_digest(str(body.get("boardToken", "")), expected)
+
+
+def payload_generation(payload):
+    """Content identity of the served payload, excluding per-boot secrets."""
+    trimmed = {k: v for k, v in payload.items()
+               if k not in ("publishToken", "boardToken")}
+    return hashlib.sha256(
+        json.dumps(trimmed, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def bind_server(root, requested, handler_cls):
+    """Bind-with-retry (never check-then-bind). A requested port is pinned —
+    a relaunch may race the prior socket's close, so retry it; otherwise probe
+    the derived window once each and fall back to an OS-assigned port."""
+    if requested:
+        last = None
+        for _ in range(10):
+            try:
+                return ThreadingHTTPServer(("127.0.0.1", requested), handler_cls)
+            except OSError as e:
+                last = e
+                time.sleep(0.2)
+        die("port %d is busy (%s); close the process using it or drop --port"
+            % (requested, last), code=1)
+    base = derive_port(root)
+    for cand in range(base, base + 10):
+        try:
+            return ThreadingHTTPServer(("127.0.0.1", cand), handler_cls)
+        except OSError:
+            continue
+    return ThreadingHTTPServer(("127.0.0.1", 0), handler_cls)
+
+
+def read_lock(plans_dir):
+    """Lock metadata {pid, port, bootId}; legacy plain-PID locks read as
+    port 0 / empty bootId. None when absent or unreadable."""
+    lock = plans_dir / ".board.lock"
+    if not lock.is_file():
+        return None
+    try:
+        raw = lock.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        info = json.loads(raw)
+        if isinstance(info, dict) and "pid" in info:
+            return {"pid": int(info["pid"]),
+                    "port": int(info.get("port", 0)),
+                    "bootId": str(info.get("bootId", ""))}
+    except (ValueError, TypeError):
+        pass
+    try:
+        return {"pid": int(raw), "port": 0, "bootId": ""}
+    except ValueError:
+        return None
+
+
+def acquire_lock(plans_dir, force, meta=None):
     lock = plans_dir / ".board.lock"
     if lock.is_file():
-        try:
-            pid = int(lock.read_text().strip())
-        except Exception:
-            pid = None
+        info = read_lock(plans_dir)
+        pid = info["pid"] if info else None
         alive = False
         if pid is not None:
             try:
@@ -574,11 +651,12 @@ def acquire_lock(plans_dir, force):
                 "another board is open (PID %s); close it or pass --force" % pid,
                 code=1,
             )
-    lock.write_text(str(os.getpid()), encoding="utf-8")
+    lock.write_text(json.dumps({"pid": os.getpid(), **(meta or {})}),
+                    encoding="utf-8")
     return lock
 
 
-def build_feedback_document(body, payload):
+def build_feedback_document(body, payload, action=None, action_id=None):
     feedback_md = body.get("feedbackMarkdown") or "# Board Feedback\n\n(no markdown)"
     meta = {
         "sessionId": str(uuid.uuid4()),
@@ -588,6 +666,20 @@ def build_feedback_document(body, payload):
         "payloadHash": body.get("payloadHash", ""),
         "annotations": body.get("annotations", []),
     }
+    if action_id:
+        meta["actionId"] = action_id
+    if action is not None:
+        # Authoritative order fields come ONLY from the server-validated
+        # tuple — never from client-supplied meta.
+        slug, ver, decision, reason = action
+        so = {"component": slug, "version": ver, "decision": decision}
+        if reason:
+            so["reason"] = reason
+        meta["signoff"] = so
+        head = "## SIGNOFF: %s v%d — %s\n\n" % (slug, ver, decision)
+        if reason:
+            head += "> %s\n\n" % reason.replace("\n", "\n> ")
+        feedback_md = head + feedback_md
     return (
         feedback_md.rstrip()
         + "\n\n```json board-feedback\n"
@@ -604,14 +696,78 @@ def publish_token_ok(body, token):
     return body.get("token") == token
 
 
-def document_from_body(body, payload):
+def draft_map_from_payload(payload):
+    """Sign-off eligibility = exactly the drafts the served board displays.
+    Derived from the payload object itself (never a second disk glob), so a
+    ticket can only ever bind content the researcher was shown."""
+    out = {}
+    for group in (payload.get("files", {}) or {}).get("executionPlans", []) or []:
+        d = group.get("draft")
+        if not d or "content" not in d or "proposedVersion" not in d:
+            continue
+        out[(group["component"], int(d["proposedVersion"]))] = {
+            "path": d["path"],
+            "hash": hashlib.sha256(
+                normalize_plan(d["content"]).encode("utf-8")).hexdigest(),
+        }
+    return out
+
+
+def validate_signoff_action(action, draft_map):
+    """Typed signoff request -> (slug, version, decision, reason).
+    Raises ValueError('bad-action') for anything not displayed by this board."""
+    if not isinstance(action, dict) or action.get("kind") != "signoff":
+        raise ValueError("bad-action")
+    slug = action.get("component")
+    ver = action.get("version")
+    decision = action.get("decision")
+    reason = action.get("reason")
+    if decision not in ("approve", "request-changes"):
+        raise ValueError("bad-action")
+    if not isinstance(slug, str) or isinstance(ver, bool) or not isinstance(ver, int):
+        raise ValueError("bad-action")
+    if (slug, ver) not in draft_map:
+        raise ValueError("bad-action")
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("bad-action")
+    return slug, ver, decision, reason
+
+
+def inject_fence_key(doc, key, value):
+    """Set one key in the document's board-feedback fence, preserving all
+    surrounding text. Fence-less documents gain a minimal fence at the end.
+    Multi-fence documents (forgery signal — parse_fence refuses them) are
+    returned untouched so downstream routing keeps refusing them."""
+    meta = parse_fence(doc)
+    if meta is None:
+        if FENCE_RE.findall(doc):
+            return doc
+        return doc.rstrip("\n") + (
+            "\n\n```json board-feedback\n%s\n```\n"
+            % json.dumps({key: value}, indent=1))
+    meta[key] = value
+    last = None
+    for last in FENCE_RE.finditer(doc):
+        pass
+    new_block = "```json board-feedback\n%s\n```" % json.dumps(meta, indent=1)
+    return doc[:last.start()] + new_block + doc[last.end():]
+
+
+def document_from_body(body, payload, action=None, action_id=None):
     """Prefer the client-assembled feedback document (schemaVersion 1 clients
     send feedbackDocument); fall back to server-side assembly for older
-    templates and the gate flow."""
+    templates and the gate flow. Action-carrying orders are ALWAYS assembled
+    server-side from the validated action tuple (the client document is
+    ignored), and every durable live order carries a server actionId."""
+    if action is not None:
+        return build_feedback_document(body, payload, action=action,
+                                       action_id=action_id)
     doc = body.get("feedbackDocument")
-    if isinstance(doc, str) and doc.strip():
-        return doc
-    return build_feedback_document(body, payload)
+    if not (isinstance(doc, str) and doc.strip()):
+        doc = build_feedback_document(body, payload)
+    if action_id:
+        doc = inject_fence_key(doc, "actionId", action_id)
+    return doc
 
 
 def serve(root, payload, args):
@@ -622,29 +778,65 @@ def serve(root, payload, args):
     gate_mode = payload.get("gate") is not None
     batch_mode = payload.get("gateBatch") is not None
     batch_id = uuid.uuid4().hex[:8]
+    boot_id = uuid.uuid4().hex
     amap = artifact_map(root, payload)
     publish_token = hashlib.sha256(os.urandom(32)).hexdigest()
     payload["publishToken"] = publish_token  # board reads window.__RP_PUBLISH_TOKEN__ from this
+    payload["projectId"] = project_id(root)
+    proj_id = payload["projectId"]
+    board_token = hashlib.sha256(os.urandom(32)).hexdigest()
+    payload["boardToken"] = board_token
+    generation = payload_generation(payload)
     html = inject(template_path().read_text(encoding="utf-8"), payload)
     html_bytes = html.encode("utf-8")
     done = threading.Event()
     result = {"approved": [], "rejected": []}
+    draft_map = draft_map_from_payload(payload)
+    slot = {"actionId": None}
+    slot_lock = threading.Lock()
+
+    def accept_order(build_doc, exit_code, write_file):
+        """Single-slot order acceptance: reserve the id, build the document,
+        write it durably (atomic replace), stage the result. Returns the
+        actionId, or None when this round already accepted an order."""
+        with slot_lock:
+            if slot["actionId"] is not None:
+                return None
+            slot["actionId"] = uuid.uuid4().hex
+        aid = slot["actionId"]
+        doc = build_doc(aid)
+        if write_file:
+            # File FIRST (survives a dead parent bash call), then unblock.
+            tmp = plans_dir / ".board-feedback.md.tmp"
+            tmp.write_text(doc, encoding="utf-8")
+            os.replace(tmp, plans_dir / ".board-feedback.md")
+        result["doc"] = doc
+        result["exit"] = exit_code
+        return aid
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # quiet
             pass
 
-        def _json(self, code, obj):
+        def _json(self, code, obj, no_store=False):
             blob = json.dumps(obj).encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(blob)))
+            if no_store:
+                self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(blob)
 
         def do_GET(self):
+            if not _host_is_local(self.headers.get("Host")):
+                self.send_response(403)  # DNS-rebinding guard, GET included
+                self.end_headers()
+                return
             if self.path == "/api/health":
-                self._json(200, {"ok": True, "app": "research-plans-board"})
+                self._json(200, {"ok": True, "app": "research-plans-board",
+                                 "bootId": boot_id, "generation": generation,
+                                 "projectId": proj_id}, no_store=True)
                 return
             if self.path.startswith("/artifact/"):
                 f = amap.get(self.path)
@@ -663,6 +855,9 @@ def serve(root, payload, args):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(html_bytes)
 
@@ -675,6 +870,19 @@ def serve(root, payload, args):
                 self.send_response(403)
                 self.end_headers()
                 return
+            body = None
+            if self.path.startswith("/api/"):
+                try:
+                    body = self._read_body()
+                except Exception:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+                # Per-boot token on every mutating route (spec §5.4) — landed
+                # atomically with all client senders + the rebuilt template.
+                if not token_ok(body, board_token):
+                    self._json(403, {"error": "bad-token"})
+                    return
             if self.path == "/publish-web":
                 try:
                     body = self._read_body()
@@ -700,60 +908,98 @@ def serve(root, payload, args):
                     self._json(500, {"error": str(e)})
                 return
             if self.path == "/api/feedback" and not gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
+                action = body.get("action")
+                ticket_args = None
+                validated = None
+                if action is not None:
+                    try:
+                        validated = validate_signoff_action(action, draft_map)
+                    except ValueError:
+                        self._json(400, {"error": "bad-action"})
+                        return
+                    slug_a, ver_a, decision_a, _reason_a = validated
+                    if decision_a == "approve":
+                        entry = draft_map[(slug_a, ver_a)]
+                        try:
+                            dtext = (root / entry["path"]).read_text(
+                                encoding="utf-8")
+                        except OSError:
+                            dtext = None
+                        now_hash = None if dtext is None else hashlib.sha256(
+                            normalize_plan(dtext).encode("utf-8")).hexdigest()
+                        if now_hash != entry["hash"]:
+                            # The displayed payload no longer matches disk:
+                            # refuse the ticket, then exit 4 so the command
+                            # loop relaunches with a fresh payload.
+                            self._json(409, {"error": "stale-draft"})
+                            result["doc"] = ""
+                            result["exit"] = 4
+                            done.set()
+                            return
+                        _tail = [ln.rstrip() for ln in
+                                 dtext.replace("\r\n", "\n").split("\n")]
+                        while _tail and _tail[-1] == "":
+                            _tail.pop()
+                        if _tail and _tail[-1].startswith("Signed off:"):
+                            # normalize_plan is trailer-invariant, so the hash
+                            # cannot distinguish trailer identity — refuse.
+                            self._json(400, {"error": "trailer-in-draft"})
+                            return
+                        ticket_args = (slug_a, ver_a, dtext)
+                aid = accept_order(
+                    lambda aid: document_from_body(body, payload,
+                                                   action=validated,
+                                                   action_id=aid),
+                    0, True)
+                if aid is None:
+                    self._json(409, {"error": "already-accepted",
+                                     "actionId": slot["actionId"]})
                     return
-                doc = document_from_body(body, payload)
-                # File FIRST (survives a dead parent bash call), then unblock.
-                (plans_dir / ".board-feedback.md").write_text(doc, encoding="utf-8")
-                result["doc"] = doc
-                result["exit"] = 0
-                self._json(200, {"ok": True})
+                if ticket_args is not None:
+                    write_ticket(root, ticket_args[0], ticket_args[1],
+                                 ticket_args[2], aid)
+                self._json(200, {"ok": True, "actionId": aid,
+                                 "bootId": boot_id, "projectId": proj_id})
                 done.set()
                 return
             if self.path == "/api/approve" and gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    body = {}
                 comment = (body.get("comment") or "").strip()
-                doc = "APPROVED: %s v%d" % (
-                    payload["gate"]["component"],
-                    payload["gate"]["proposedVersion"],
-                )
-                if comment:
-                    doc += "\nResearcher comment: %s" % comment
-                result["doc"] = doc
-                result["exit"] = 0
-                self._json(200, {"ok": True})
+
+                def _approve_doc(aid):
+                    doc = "APPROVED: %s v%d" % (
+                        payload["gate"]["component"],
+                        payload["gate"]["proposedVersion"],
+                    )
+                    if comment:
+                        doc += "\nResearcher comment: %s" % comment
+                    return doc
+
+                # Gate approve is stdout-only by protocol: the blocking hook
+                # consumes the exit code; a pending file would go stale.
+                aid = accept_order(_approve_doc, 0, False)
+                if aid is None:
+                    self._json(409, {"error": "already-accepted",
+                                     "actionId": slot["actionId"]})
+                    return
+                self._json(200, {"ok": True, "actionId": aid,
+                                 "bootId": boot_id, "projectId": proj_id})
                 done.set()
                 return
             if self.path == "/api/deny" and gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
+                aid = accept_order(
+                    lambda aid: document_from_body(body, payload, action_id=aid),
+                    3, True)
+                if aid is None:
+                    self._json(409, {"error": "already-accepted",
+                                     "actionId": slot["actionId"]})
                     return
-                doc = document_from_body(body, payload)
-                (plans_dir / ".board-feedback.md").write_text(doc, encoding="utf-8")
-                result["doc"] = doc
-                result["exit"] = 3
-                self._json(200, {"ok": True})
+                self._json(200, {"ok": True, "actionId": aid,
+                                 "bootId": boot_id, "projectId": proj_id})
                 done.set()
                 return
             # ---- Batch sign-off wizard: each approval writes its ticket NOW
             # (incremental persistence); the session ends only on /api/batch/done. ----
             if self.path == "/api/batch/approve" and batch_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 comp, ver = body.get("component"), body.get("proposedVersion")
                 entry = next(
                     (e for e in payload["gateBatch"]
@@ -769,12 +1015,6 @@ def serve(root, payload, args):
                 self._json(200, {"ok": True, "approved": len(result["approved"])})
                 return
             if self.path == "/api/batch/reject" and batch_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 result["rejected"].append(
                     [body.get("component"), body.get("proposedVersion"),
                      (body.get("comment") or "").strip()])
@@ -788,8 +1028,10 @@ def serve(root, payload, args):
             self.send_response(404)
             self.end_headers()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = bind_server(root, args.port, Handler)
     port = server.server_address[1]
+    lock.write_text(json.dumps({"pid": os.getpid(), "port": port,
+                                "bootId": boot_id}), encoding="utf-8")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -801,7 +1043,10 @@ def serve(root, payload, args):
         except Exception:
             pass
 
-    signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(SystemExit(130)))
+    # signal.signal is main-thread-only; in-process harnesses run serve() on a
+    # worker thread and rely on the timeout/done paths instead of SIGTERM.
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(SystemExit(130)))
 
     try:
         got = done.wait(timeout=args.timeout)
@@ -826,6 +1071,10 @@ def serve(root, payload, args):
         server.shutdown()
         sys.exit(130)
     finally:
+        try:
+            server.server_close()  # release the socket promptly for pinned relaunch
+        except Exception:
+            pass
         try:
             lock.unlink()
         except OSError:
@@ -1308,13 +1557,66 @@ def publish_pages(root, args):
 
 
 def collect_pending(root):
+    """Non-destructive PEEK at the pending order. Deletion is a separate,
+    explicit --ack step run only after the routed work finished — a crash
+    mid-routing must re-offer the order on the next launch."""
     pending = root / "plans" / ".board-feedback.md"
     if not pending.is_file():
         print("No pending feedback.", file=sys.stderr)
         sys.exit(3)
     print(pending.read_text(encoding="utf-8"))
-    pending.unlink()
     sys.exit(0)
+
+
+def ack_pending(root):
+    """Acknowledge (delete) the pending order after its work completed."""
+    pending = root / "plans" / ".board-feedback.md"
+    if not pending.is_file():
+        print("board: nothing to acknowledge.", file=sys.stderr)
+        sys.exit(3)
+    pending.unlink()
+    print("board: acknowledged.", file=sys.stderr)
+    sys.exit(0)
+
+
+ACTION_KEYS = ("signoff", "verdict", "reviewRequest", "reportRequest", "reopen")
+
+_ACTION_HEADING_RE = re.compile(
+    r"(?m)^(##\s+(?:SIGNOFF|VERDICT|REVIEW REQUEST|REPORT REQUEST|"
+    r"REOPEN REQUEST)\s*:)")
+
+
+def strip_action_keys_from_document(doc):
+    """Remove researcher-action keys from a hand-delivered document's fence
+    (top level and per annotation). Returns (doc, sorted stripped keys).
+    Multi-fence/fence-less docs come back unchanged — parse_fence already
+    refuses to route the former."""
+    meta = parse_fence(doc)
+    if meta is None:
+        return doc, []
+    stripped = set()
+    for k in ACTION_KEYS:
+        if meta.pop(k, None) is not None:
+            stripped.add(k)
+    for ann in meta.get("annotations") or []:
+        if isinstance(ann, dict):
+            for k in ACTION_KEYS:
+                if ann.pop(k, None) is not None:
+                    stripped.add(k)
+    if not stripped:
+        return doc, []
+    last = None
+    for last in FENCE_RE.finditer(doc):
+        pass
+    new_block = "```json board-feedback\n%s\n```" % json.dumps(meta, indent=1)
+    return doc[:last.start()] + new_block + doc[last.end():], sorted(stripped)
+
+
+def neutralize_action_headings(doc):
+    """Demote action headings to quotes in hand-delivered markdown — the
+    command routes by heading as well as fence key. Returns (doc, count)."""
+    out, n = _ACTION_HEADING_RE.subn(r"> \1", doc)
+    return out, n
 
 
 def parse_fence(doc):
@@ -1511,6 +1813,17 @@ def collect_file(root, path):
     if not p.is_file():
         die("no feedback file at %s" % p)
     doc = p.read_text(encoding="utf-8", errors="replace")
+    # Hand-delivered ingress never carries action authority: strip the keys
+    # and demote the headings. (The live pending file goes through
+    # collect_pending and is NOT sanitized — it is server-written.)
+    doc, stripped = strip_action_keys_from_document(doc)
+    doc, demoted = neutralize_action_headings(doc)
+    if stripped or demoted:
+        print("board: stripped researcher-action markers from hand-delivered "
+              "file (%s%s)" % (", ".join(stripped) if stripped else "",
+                               ("; %d heading(s) demoted" % demoted)
+                               if demoted else ""),
+              file=sys.stderr)
     return inspect_feedback_document(root, doc)
 
 
@@ -1653,6 +1966,8 @@ def parse_args(argv=None):
     ap.add_argument("--publish", action="store_true",
                     help="publish the static board to the repo's GitHub Pages (gh-pages branch)")
     ap.add_argument("--collect", nargs="?", const="PENDING", default=None, metavar="FILE")
+    ap.add_argument("--ack", action="store_true",
+                    help="acknowledge (delete) the routed pending order")
     ap.add_argument("--gate", default=None, metavar="SLUG/vN")
     ap.add_argument("--gate-batch", action="store_true",
                     help="one-at-a-time sign-off over all pending drafts")
@@ -1672,7 +1987,7 @@ def parse_args(argv=None):
 
 
 _ACTION_FLAGS = ("export", "share", "publish", "publish_web", "pull",
-                 "web_connect", "web_clear", "set_password")
+                 "web_connect", "web_clear", "set_password", "ack")
 
 
 def selected_actions(args):
@@ -1711,6 +2026,8 @@ def main():
             collect_pending(root)
         else:
             collect_file(root, args.collect)
+    elif args.ack:
+        ack_pending(root)
     elif args.share is not None:
         share(root, args)
     elif args.export is not None:

@@ -36,7 +36,7 @@ export default function BatchGate({ data }: { data: BoardData }) {
     const res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, boardToken: data.boardToken }),
     });
     if (!res.ok) throw new Error(await res.text().catch(() => "request failed"));
   };

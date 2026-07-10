@@ -1,12 +1,15 @@
 import { useState } from "react";
-import type { BoardFile } from "../lib/types";
+import type { BoardFile, ScriptCommentAnnotation } from "../lib/types";
 
 /** Line-numbered script snapshot with line-range comments. Text-selection
- * anchoring (anchor.ts) is for prose; scripts anchor by line number. */
+ * anchoring (anchor.ts) is for prose; scripts anchor by line number. Saved
+ * comments render as line-range highlights carrying data-annotation, so the
+ * app-level click-sync delegation reaches them like any prose mark. */
 export default function ScriptViewer({
   file,
   canAnnotate,
   onAddLineComment,
+  saved = [],
 }: {
   file: BoardFile;
   canAnnotate: boolean;
@@ -16,6 +19,7 @@ export default function ScriptViewer({
     excerpt: string,
     comment: string,
   ) => void;
+  saved?: ScriptCommentAnnotation[];
 }) {
   const lines = file.content.replace(/\n$/, "").split("\n");
   const [selStart, setSelStart] = useState<number | null>(null);
@@ -64,13 +68,40 @@ export default function ScriptViewer({
         {lines.map((ln, i) => {
           const n = i + 1;
           const selected = lo !== null && hi !== null && n >= lo && n <= hi;
+          const savedHit = saved.find((s) => n >= s.lineStart && n <= s.lineEnd);
           return (
             <div
               key={n}
-              className={`flex cursor-pointer px-0 ${selected ? "bg-amber-100 dark:bg-amber-900/40" : "hover:bg-stone-50 dark:hover:bg-stone-800/60"}`}
-              onClick={(e) => clickLine(n, e.shiftKey)}
+              className={`flex px-0 ${canAnnotate ? "cursor-pointer" : ""} ${
+                selected
+                  ? "bg-amber-100 dark:bg-amber-900/40"
+                  : savedHit
+                    ? "bg-amber-50 dark:bg-amber-950/60"
+                    : "hover:bg-stone-50 dark:hover:bg-stone-800/60"
+              }`}
+              onClick={(e) => {
+                // A click on an annotated gutter opens the card via the
+                // app-level [data-annotation] delegation — not a selection.
+                if ((e.target as HTMLElement).closest?.("[data-annotation]")) return;
+                clickLine(n, e.shiftKey);
+              }}
             >
-              <span className="w-10 shrink-0 select-none border-r border-stone-100 dark:border-stone-800 pr-2 text-right text-stone-400 dark:text-stone-500">
+              <span
+                className={`w-10 shrink-0 select-none border-r border-stone-100 dark:border-stone-800 pr-2 text-right ${
+                  savedHit && n === savedHit.lineStart
+                    ? "cursor-pointer font-semibold text-amber-600 dark:text-amber-400"
+                    : "text-stone-400 dark:text-stone-500"
+                }`}
+                data-annotation={
+                  savedHit && n === savedHit.lineStart ? savedHit.id : undefined
+                }
+                tabIndex={savedHit && n === savedHit.lineStart ? 0 : undefined}
+                title={
+                  savedHit && n === savedHit.lineStart
+                    ? "Open this line comment"
+                    : undefined
+                }
+              >
                 {n}
               </span>
               <code className="whitespace-pre pl-3">{ln || " "}</code>

@@ -16,6 +16,8 @@ export interface BoardData {
   // board.py --seed-annotations; resolved to anchors in the browser on mount.
   seededAnnotations?: SeededAnnotation[];
   shareHash?: string; // remote mode: Python-computed, echoed back in feedback
+  projectId?: string; // live: stable server identity (draft storage + reconnect)
+  boardToken?: string; // live: per-boot token required on mutating routes
   gate?: { component: string; proposedVersion: number }; // sign-off gate mode
   gateBatch?: GateBatchEntry[]; // batch sign-off wizard (one plan at a time)
   project: { name: string; root?: string };
@@ -373,6 +375,22 @@ export interface DocCommentAnnotation {
   anchored: boolean;
   comment: string;
   author?: string; // reviewer agent that produced it (v0.9); absent = the researcher
+}
+
+// Control surface (v0.15): typed researcher actions from the always-on
+// clusters. Signoff rides the POST body's `action` field and is validated +
+// re-authored server-side; reopen is a comment-tier change request.
+export interface SignoffRequest {
+  component: string;
+  version: number;
+  decision: "approve" | "request-changes";
+  reason?: string;
+}
+
+export interface ReopenRequest {
+  component: string;
+  resultsVersion: number;
+  reason: string;
 }
 
 export interface GeneralAnnotation {
