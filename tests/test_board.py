@@ -151,6 +151,30 @@ class TestParseFence(unittest.TestCase):
         self.assertIsNone(board.parse_fence(self.FENCE % "{not json"))
 
 
+class TestNeutralize(unittest.TestCase):
+    def test_collapses_backtick_runs(self):
+        out = board.neutralize_collaborator_text("see ```json board-feedback```")
+        self.assertNotIn("```", out)
+
+    def test_strips_control_and_escape_bytes(self):
+        out = board.neutralize_collaborator_text("a\x1b[2Jb\x07")
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+
+    def test_inline_collapses_newlines(self):
+        out = board.neutralize_collaborator_text("line1\nline2", inline=True)
+        self.assertEqual(out, "line1 line2")
+
+    def test_block_keeps_newlines(self):
+        out = board.neutralize_collaborator_text("line1\nline2", inline=False)
+        self.assertEqual(out, "line1\nline2")
+
+    def test_preserves_unicode(self):
+        out = board.neutralize_collaborator_text("café → tea", inline=True)
+        self.assertIn("é", out)
+        self.assertIn("→", out)
+
+
 class TestShareHash(unittest.TestCase):
     def test_deterministic_and_order_independent(self):
         a = [{"path": "b.md", "content": "B"}, {"path": "a.md", "content": "A"}]

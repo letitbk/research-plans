@@ -975,6 +975,26 @@ def parse_fence(doc):
     return meta if isinstance(meta, dict) else None
 
 
+def neutralize_collaborator_text(s, inline=False):
+    """Make collaborator-supplied text safe to embed in a feedback document.
+
+    Removes control/non-printable bytes (incl. ESC) while keeping legitimate
+    Unicode, collapses any run of >=2 backticks to a single backtick so no
+    triple-backtick fence can form, and (inline) collapses whitespace so the
+    text stays on one line. The assembler additionally prefixes multi-line
+    comment text with "> " so nothing collaborator-controlled reaches column 0.
+    """
+    s = str(s)
+    s = "".join(
+        ch for ch in s
+        if ch in "\t\n" or (32 <= ord(ch) < 127) or ord(ch) >= 160
+    )
+    s = re.sub(r"`{2,}", "`", s)
+    if inline:
+        s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def collect_file(root, path):
     p = Path(path)
     if not p.is_absolute():
