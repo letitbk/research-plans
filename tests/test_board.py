@@ -576,6 +576,18 @@ class TestExportResults(unittest.TestCase):
                 g["results"][0]["assets"]["fig1.png"].startswith("data:image/png;base64,"))
 
 
+class TestMaterializeWebDir(unittest.TestCase):
+    def test_copies_template_and_injects_hosted_index(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            out = board.materialize_web_dir(root)
+            self.assertTrue((out / "middleware.ts").exists())
+            self.assertTrue((out / "api" / "comments.ts").exists())
+            self.assertTrue((out / "vercel.json").exists())
+            idx = (out / "index.html").read_text()
+            self.assertIn('"mode": "hosted"', idx)  # hosted payload injected
+
+
 class TestDocumentFromBody(unittest.TestCase):
     PAYLOAD = {"generatedAt": "2026-07-03T12:00:00", "mode": "live", "focus": None}
 

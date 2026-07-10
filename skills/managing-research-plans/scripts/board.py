@@ -88,6 +88,8 @@ GITIGNORE_LINES = [
 
 FENCE_RE = re.compile(r"```json board-feedback\n(.*?)\n```", re.DOTALL)
 
+WEB_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "assets" / "web-template"
+
 
 def web_project_hash(root):
     return hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:16]
@@ -801,6 +803,36 @@ def render_static_html(root, focus=None):
     payload["focusResults"] = focus_results
     build_assets(root, payload)
     return inject(template_path().read_text(encoding="utf-8"), payload)
+
+
+def node_preflight():
+    """Returns an error message if node/npx missing, else None."""
+    for tool in ("node", "npx"):
+        if shutil.which(tool) is None:
+            return ("Sharing to the web needs Node.js (for the Vercel CLI). Install it "
+                    "from https://nodejs.org (or `brew install node`), then retry.")
+    return None
+
+
+def render_hosted_html(root):
+    """Render the board in hosted mode with embedded payload."""
+    slug = None
+    payload = collect_payload(root, "hosted", slug)
+    payload["mode"] = "hosted"
+    build_assets(root, payload)
+    return inject(template_path().read_text(encoding="utf-8"), payload)
+
+
+def materialize_web_dir(root):
+    """Copy the web-template and write index.html with the hosted board.
+    Returns the deploy dir plans/.board-web/."""
+    out = root / "plans" / ".board-web"
+    if out.exists():
+        shutil.rmtree(out)
+    shutil.copytree(WEB_TEMPLATE_DIR, out,
+                    ignore=shutil.ignore_patterns("node_modules", ".vercel", "*.test.ts"))
+    (out / "index.html").write_text(render_hosted_html(root), encoding="utf-8")
+    return out
 
 
 def export(root, args):
