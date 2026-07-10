@@ -16,6 +16,8 @@ export interface BoardData {
   // board.py --seed-annotations; resolved to anchors in the browser on mount.
   seededAnnotations?: SeededAnnotation[];
   shareHash?: string; // remote mode: Python-computed, echoed back in feedback
+  projectId?: string; // live: stable server identity (draft storage + reconnect)
+  boardToken?: string; // live: per-boot token required on mutating routes
   gate?: { component: string; proposedVersion: number }; // sign-off gate mode
   gateBatch?: GateBatchEntry[]; // batch sign-off wizard (one plan at a time)
   project: { name: string; root?: string };

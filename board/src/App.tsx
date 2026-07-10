@@ -22,6 +22,7 @@ import {
   newUuid,
   partitionComments,
 } from "./lib/hostedComments";
+import { liveDraftKey, loadDrafts, clearSubmitted } from "./lib/drafts";
 import type {
   Annotation,
   BoardData,
@@ -265,7 +266,11 @@ export default function App({ data }: { data: BoardData }) {
   // republish), not payloadHash — so redeploying the board never orphans a
   // visitor's unsent drafts or resets their name.
   const webKey = hosted ? `rp-hosted:${data.project.name}:${location.origin}` : null;
-  const pendingKey = hosted ? (webKey as string) : storageKey;
+  // Live persistence (control surface): a STABLE per-project key so relaunches
+  // with changed payloads never orphan unsent drafts. Remote keeps the
+  // payload-hash scheme (one-shot files exchanged across machines).
+  const liveKey = canPost && data.projectId ? liveDraftKey(data.projectId) : null;
+  const pendingKey = hosted ? (webKey as string) : (liveKey ?? storageKey);
   const sessionId = useMemo(() => newSessionId(), []);
 
   const [tab, setTab] = useState<Tab>(
@@ -284,8 +289,13 @@ export default function App({ data }: { data: BoardData }) {
     if (!canAnnotate) return [];
     let base: Annotation[] = [];
     try {
-      const saved = localStorage.getItem(pendingKey);
-      base = saved ? (JSON.parse(saved) as Annotation[]) : [];
+      if (liveKey && data.projectId) {
+        // Stable live key; merges legacy payload-hash drafts in exactly once.
+        base = loadDrafts(localStorage, data.projectId, data.project.name, payloadHash);
+      } else {
+        const saved = localStorage.getItem(pendingKey);
+        base = saved ? (JSON.parse(saved) as Annotation[]) : [];
+      }
     } catch {
       base = [];
     }
@@ -562,6 +572,21 @@ export default function App({ data }: { data: BoardData }) {
     [feedbackMarkdown, sessionId, data, remote, reviewer, payloadHash, annotations, pendingVerdict],
   );
 
+  // Clear exactly the annotations that rode a successful POST; on the stable
+  // live key unsubmitted drafts survive, elsewhere the whole key clears
+  // (everything is submitted together today).
+  const clearSentDrafts = (sentIds: string[]) => {
+    try {
+      if (liveKey && data.projectId) {
+        clearSubmitted(localStorage, data.projectId, sentIds);
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const submit = async () => {
     setSubmitState("sending");
     try {
@@ -578,11 +603,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("sent");
       setPendingVerdict(null);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      clearSentDrafts(annotations.map((a) => a.id));
     } catch {
       setSubmitState("failed");
     }
@@ -621,11 +642,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("sent");
       setPendingVerdict(null);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      clearSentDrafts(annotations.map((a) => a.id));
     } catch {
       setSubmitState("failed");
     }
@@ -716,11 +733,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("sent");
       setPendingVerdict(null);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      clearSentDrafts(annotations.map((a) => a.id));
     } catch {
       setSubmitState("failed");
     }
