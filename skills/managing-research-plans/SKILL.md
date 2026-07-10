@@ -24,6 +24,8 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 
 **Session start.** Read `plans/master-plan.md`, then the latest version of the execution plan for whichever component the work touches (`plans/execution/<NN-slug>/`, highest `vN.md`).
 
+**Model nudge (execution).** If the project has `plans/model-profile.md`, execution work honors its `execute` row: run `python3 <this skill's directory>/scripts/models.py stage execute` once at the start of execution work. Empty output → say nothing (relay any stderr warning once — `/research-plans:models` fixes a malformed row). When the row's model is not `inherit` and differs from the model you are running as, print exactly one line — `Model profile: this stage is set to <model>; you're on <current>. Switch with /model <model> (safe mid-conversation — nothing is lost), or continue as-is.` — and proceed; the nudge never blocks and is never repeated in a session.
+
 **Mid-session adoption.** The workflow can be adopted mid-session, after exploratory work has begun (`/research-plans:init` works either way). What the session already established feeds the plan — context, research questions, goals, scope reasons — never the log. The log starts at the master plan's `Initialized:` timestamp; nothing before it is loggable or counts as a deviation.
 
 **During work.**
