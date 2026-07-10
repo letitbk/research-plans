@@ -52,14 +52,27 @@ export function clearCookieHeader(): string {
   return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
+// A plain header bag as delivered by a Node request (`req.headers`), with
+// lowercased keys. Accepting this (rather than a Web `Headers`) lets isAuthed
+// run inside a classic Node function handler — the shape Vercel actually
+// invokes (the Web Handler `export function GET/POST` pattern is not dispatched
+// by the Node launcher; this was found in the real-Vercel e2e).
+export type HeaderBag = Record<string, string | string[] | undefined>;
+
+function headerValue(headers: HeaderBag, name: string): string | null {
+  const v = headers[name.toLowerCase()];
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v ?? null;
+}
+
 export function isAuthed(
   env: { BOARD_SESSION_SECRET?: string; BOARD_PULL_KEY?: string },
-  headers: Headers,
+  headers: HeaderBag,
   now: number,
 ): boolean {
-  const key = headers.get("x-board-key");
+  const key = headerValue(headers, "x-board-key");
   if (key && env.BOARD_PULL_KEY && timingSafeEqualStr(key, env.BOARD_PULL_KEY)) return true;
-  const cookie = readCookie(headers.get("cookie"), COOKIE_NAME);
+  const cookie = readCookie(headerValue(headers, "cookie"), COOKIE_NAME);
   if (cookie && env.BOARD_SESSION_SECRET && verifyCookie(env.BOARD_SESSION_SECRET, cookie, now)) {
     return true;
   }

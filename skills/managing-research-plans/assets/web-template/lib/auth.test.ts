@@ -38,16 +38,13 @@ describe("isAuthed", () => {
   const env = { BOARD_SESSION_SECRET: SECRET, BOARD_PULL_KEY: "pull-123" };
   it("accepts a valid cookie", () => {
     const c = signCookie(SECRET, NOW, 3600);
-    const h = new Headers({ cookie: `board_session=${c}` });
-    expect(isAuthed(env, h, NOW + 10)).toBe(true);
+    expect(isAuthed(env, { cookie: `board_session=${c}` }, NOW + 10)).toBe(true);
   });
   it("accepts a valid x-board-key", () => {
-    const h = new Headers({ "x-board-key": "pull-123" });
-    expect(isAuthed(env, h, NOW)).toBe(true);
+    expect(isAuthed(env, { "x-board-key": "pull-123" }, NOW)).toBe(true);
   });
   it("rejects when neither is valid", () => {
-    const h = new Headers({ "x-board-key": "wrong" });
-    expect(isAuthed(env, h, NOW)).toBe(false);
-    expect(isAuthed(env, new Headers(), NOW)).toBe(false);
+    expect(isAuthed(env, { "x-board-key": "wrong" }, NOW)).toBe(false);
+    expect(isAuthed(env, {}, NOW)).toBe(false);
   });
 });

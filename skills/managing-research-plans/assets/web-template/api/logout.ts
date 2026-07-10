@@ -1,11 +1,9 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { clearCookieHeader } from "../lib/auth";
 import { SECURITY_HEADERS } from "../lib/gate";
 
-export async function POST(_request: Request): Promise<Response> {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { "content-type": "application/json", "set-cookie": clearCookieHeader(), ...SECURITY_HEADERS },
-  });
+export default async function handler(_req: VercelRequest, res: VercelResponse): Promise<void> {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+  res.setHeader("Set-Cookie", clearCookieHeader());
+  res.status(200).json({ ok: true });
 }
-
-export const config = { runtime: "nodejs" };

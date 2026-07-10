@@ -1,34 +1,20 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { POST as login } from "./login";
-import { POST as logout } from "./logout";
+import { describe, it, expect } from "vitest";
+import { run } from "./login";
 
-beforeEach(() => { process.env.BOARD_PASSWORD = "correct-horse";
-  process.env.BOARD_SESSION_SECRET = "sess"; });
-
-async function form(pw: string): Promise<Request> {
-  return new Request("https://x/api/login", { method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ password: pw }).toString() });
-}
+const env = { BOARD_PASSWORD: "correct-horse", BOARD_SESSION_SECRET: "sess" };
+const now = 1_000_000;
 
 describe("login", () => {
-  it("sets a cookie and redirects on correct password", async () => {
-    const res = await login(await form("correct-horse"));
-    expect(res.status).toBe(303);
-    expect(res.headers.get("set-cookie")).toContain("board_session=");
-    expect(res.headers.get("set-cookie")).toContain("HttpOnly");
+  it("sets a cookie and redirects on correct password", () => {
+    const result = run({ password: "correct-horse" }, env, now);
+    expect(result.status).toBe(303);
+    expect(result.setCookie).toContain("board_session=");
+    expect(result.setCookie).toContain("HttpOnly");
   });
-  it("re-serves the login page (no cookie) on wrong password", async () => {
-    const res = await login(await form("wrong"));
-    expect(res.headers.get("set-cookie")).toBeNull();
-    expect(res.status).toBe(401);
-  });
-});
-
-describe("logout", () => {
-  it("clears the cookie", async () => {
-    const res = await logout(new Request("https://x/api/logout", { method: "POST" }));
-    expect(res.status).toBe(200);
-    expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+  it("re-serves the login page (no cookie) on wrong password", () => {
+    const result = run({ password: "wrong" }, env, now);
+    expect(result.status).toBe(401);
+    expect(result.html).toBeTruthy();
+    expect(result.setCookie).toBeUndefined();
   });
 });

@@ -6,24 +6,22 @@ const { list, del } = vi.hoisted(() => ({
 }));
 vi.mock("@vercel/blob", () => ({ list, del }));
 
-import { POST } from "./clear";
+import { run } from "./clear";
 
-const SECRET = "sess";
+const env = { BOARD_SESSION_SECRET: "sess", BOARD_PULL_KEY: "pull-1", BLOB_READ_WRITE_TOKEN: "tok" };
+const now = 1_000_000;
+
 beforeEach(() => {
   list.mockReset();
   del.mockClear();
-  process.env.BOARD_SESSION_SECRET = SECRET;
-  process.env.BOARD_PULL_KEY = "pull-1";
-  process.env.BLOB_READ_WRITE_TOKEN = "tok";
 });
 
 const authHeaders = { "x-board-key": "pull-1" };
 
-describe("POST /api/clear", () => {
-  it("401 JSON without auth (never HTML), and deletes nothing", async () => {
-    const res = await POST(new Request("https://x/api/clear", { method: "POST" }));
-    expect(res.status).toBe(401);
-    expect(res.headers.get("content-type")).toContain("application/json");
+describe("clear", () => {
+  it("401 without auth (never HTML), and deletes nothing", async () => {
+    const result = await run({}, env, now);
+    expect(result.status).toBe(401);
     expect(del).not.toHaveBeenCalled();
   });
 
@@ -35,10 +33,9 @@ describe("POST /api/clear", () => {
       ],
       hasMore: false,
     });
-    const res = await POST(new Request("https://x/api/clear", { method: "POST", headers: authHeaders }));
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json).toEqual({ ok: true, deleted: 2 });
+    const result = await run(authHeaders, env, now);
+    expect(result.status).toBe(200);
+    expect(result.json).toEqual({ ok: true, deleted: 2 });
     expect(del).toHaveBeenCalledTimes(2);
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ token: "tok", prefix: "comments/" }));
   });
@@ -53,9 +50,8 @@ describe("POST /api/clear", () => {
       blobs: [{ url: "https://x.blob.vercel-storage.com/comments/2.json" }],
       hasMore: false,
     });
-    const res = await POST(new Request("https://x/api/clear", { method: "POST", headers: authHeaders }));
+    const result = await run(authHeaders, env, now);
     expect(list).toHaveBeenCalledTimes(2);
-    const json = await res.json();
-    expect(json.deleted).toBe(2);
+    expect((result.json as { deleted: number }).deleted).toBe(2);
   });
 });

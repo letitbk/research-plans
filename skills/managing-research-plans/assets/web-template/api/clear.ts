@@ -1,21 +1,25 @@
-import { isAuthed } from "../lib/auth";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { isAuthed, type HeaderBag } from "../lib/auth";
 import { SECURITY_HEADERS } from "../lib/gate";
 import { list, del } from "@vercel/blob";
 
-export async function POST(request: Request): Promise<Response> {
-  const now = Math.floor(Date.now() / 1000);
-  if (!isAuthed(process.env as Record<string, string>, request.headers, now)) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401, headers: { "content-type": "application/json", ...SECURITY_HEADERS } });
-  }
-  const token = process.env.BLOB_READ_WRITE_TOKEN as string;
-  let cursor: string | undefined, n = 0;
+export interface ClearResult { status: number; json: unknown; }
+
+export async function run(headers: HeaderBag, env: Record<string, string | undefined>, now: number): Promise<ClearResult> {
+  if (!isAuthed(env, headers, now)) return { status: 401, json: { error: "unauthorized" } };
+  const token = env.BLOB_READ_WRITE_TOKEN as string;
+  let cursor: string | undefined;
+  let n = 0;
   do {
     const page = await list({ token, prefix: "comments/", cursor, limit: 1000 });
     for (const b of page.blobs) { await del(b.url, { token }); n++; }
     cursor = page.hasMore ? page.cursor : undefined;
   } while (cursor);
-  return new Response(JSON.stringify({ ok: true, deleted: n }), {
-    status: 200, headers: { "content-type": "application/json", ...SECURITY_HEADERS } });
+  return { status: 200, json: { ok: true, deleted: n } };
 }
-export const config = { runtime: "nodejs" };
+
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const r = await run(req.headers as HeaderBag, process.env, Math.floor(Date.now() / 1000));
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+  res.status(r.status).json(r.json);
+}

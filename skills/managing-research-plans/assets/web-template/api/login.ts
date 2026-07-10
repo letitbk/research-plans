@@ -1,26 +1,27 @@
-import { signCookie, cookieHeader, clearCookieHeader, timingSafeEqualStr } from "../lib/auth";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { signCookie, cookieHeader, timingSafeEqualStr } from "../lib/auth";
 import { SECURITY_HEADERS } from "../lib/gate";
 import { loginPageHtml } from "../lib/loginPage";
 
-export async function POST(request: Request): Promise<Response> {
-  const now = Math.floor(Date.now() / 1000);
+export interface LoginResult { status: number; html?: string; location?: string; setCookie?: string; }
+
+export function run(body: unknown, env: Record<string, string | undefined>, now: number): LoginResult {
   let pw = "";
-  try {
-    const form = await request.formData();
-    pw = String(form.get("password") ?? "");
-  } catch { /* fallthrough to failure */ }
-  const expected = process.env.BOARD_PASSWORD ?? "";
+  if (body && typeof body === "object" && !Array.isArray(body)) pw = String((body as Record<string, unknown>).password ?? "");
+  else if (typeof body === "string") pw = new URLSearchParams(body).get("password") ?? "";
+  const expected = env.BOARD_PASSWORD ?? "";
   if (expected && timingSafeEqualStr(pw, expected)) {
-    const cookie = signCookie(process.env.BOARD_SESSION_SECRET as string, now);
-    return new Response(null, {
-      status: 303,
-      headers: { location: "/", "set-cookie": cookieHeader(cookie), ...SECURITY_HEADERS },
-    });
+    return { status: 303, location: "/", setCookie: cookieHeader(signCookie(env.BOARD_SESSION_SECRET as string, now)) };
   }
-  return new Response(loginPageHtml(), {
-    status: 401,
-    headers: { "content-type": "text/html; charset=utf-8", ...SECURITY_HEADERS },
-  });
+  return { status: 401, html: loginPageHtml() };
 }
 
-export const config = { runtime: "nodejs" };
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const r = run(req.body, process.env, Math.floor(Date.now() / 1000));
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+  if (r.setCookie) res.setHeader("Set-Cookie", r.setCookie);
+  if (r.location) res.setHeader("Location", r.location);
+  res.status(r.status);
+  if (r.html !== undefined) { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.send(r.html); }
+  else res.end();
+}
