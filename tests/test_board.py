@@ -908,6 +908,37 @@ class TestAssembleHosted(unittest.TestCase):
         self.assertIsNotNone(meta)
 
 
+class TestInspectFeedbackDocument(unittest.TestCase):
+    def test_hosted_shareHash_staleness_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            # A hosted doc carrying a stale shareHash should warn on stderr.
+            doc = board.assemble_hosted_document(
+                [{"type": "doc-comment", "view": "tracker", "quote": "q",
+                  "comment": "c", "author": "Ada"}],
+                {"sessionId": "s", "generatedAt": "t", "focus": None,
+                 "reviewer": "Ada", "shareHash": "STALEHASH"},
+            )
+            import io, contextlib
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = board.inspect_feedback_document(root, doc)
+            self.assertEqual(rc, 0)
+            self.assertIn("STALE", err.getvalue())
+
+    def test_no_fence_warns_but_succeeds(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            import io, contextlib
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                rc = board.inspect_feedback_document(root, "# Feedback\n\nplain body")
+            self.assertEqual(rc, 0)
+            self.assertIn("no parseable", err.getvalue())
+
+
 class TestGoldenFeedbackContract(unittest.TestCase):
     FIXTURE = (
         Path(__file__).resolve().parents[1]

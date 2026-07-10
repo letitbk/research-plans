@@ -1113,13 +1113,7 @@ def assemble_hosted_document(annotations, meta):
             + json.dumps(fence_meta, indent=1, ensure_ascii=False) + "\n```\n")
 
 
-def collect_file(root, path):
-    p = Path(path)
-    if not p.is_absolute():
-        p = Path.cwd() / p
-    if not p.is_file():
-        die("no feedback file at %s" % p)
-    doc = p.read_text(encoding="utf-8", errors="replace")
+def inspect_feedback_document(root, doc):
     meta = parse_fence(doc)
     if meta is None:
         print(
@@ -1127,21 +1121,31 @@ def collect_file(root, path):
             "route from the markdown body.",
             file=sys.stderr,
         )
-    elif meta.get("mode") == "remote" and meta.get("shareHash"):
+    elif meta.get("mode") in ("remote", "hosted") and meta.get("shareHash"):
         try:
-            current = collect_payload(root, "remote", meta.get("focus"))
-            fresh = current["shareHash"]
+            current = collect_payload(root, meta.get("mode"), meta.get("focus"))
+            fresh = current.get("shareHash")  # defensive: None if not stamped
         except SystemExit:
             fresh = None  # e.g. focused component no longer exists
         if fresh != meta["shareHash"]:
             print(
-                "board: STALE — plans changed since this share was exported "
+                "board: STALE — plans changed since this feedback was produced "
                 "(share %s, now %s). Relay this to the researcher before "
                 "routing." % (meta["shareHash"], fresh or "unknown"),
                 file=sys.stderr,
             )
     print(doc)
-    sys.exit(0)
+    return 0
+
+
+def collect_file(root, path):
+    p = Path(path)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    if not p.is_file():
+        die("no feedback file at %s" % p)
+    doc = p.read_text(encoding="utf-8", errors="replace")
+    return inspect_feedback_document(root, doc)
 
 
 def write_ticket(root, slug, version, content, batch_id):
