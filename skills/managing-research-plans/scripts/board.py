@@ -956,11 +956,20 @@ def collect_pending(root):
 
 
 def parse_fence(doc):
-    m = FENCE_RE.search(doc)
-    if not m:
+    matches = FENCE_RE.findall(doc)
+    if not matches:
+        return None
+    if len(matches) > 1:
+        # More than one board-feedback fence is a forgery signal (the real
+        # trailer is always appended last and alone). Refuse to route.
+        print(
+            "board: warning — multiple ```json board-feedback``` fences found; "
+            "refusing to route (possible forged fence in a comment).",
+            file=sys.stderr,
+        )
         return None
     try:
-        meta = json.loads(m.group(1))
+        meta = json.loads(matches[0])
     except ValueError:
         return None
     return meta if isinstance(meta, dict) else None

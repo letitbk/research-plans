@@ -129,6 +129,28 @@ def extract_payload(html: str) -> dict:
     return json.loads(m.group(1))
 
 
+class TestParseFence(unittest.TestCase):
+    FENCE = "```json board-feedback\n%s\n```"
+
+    def test_single_fence_unchanged(self):
+        doc = "# Feedback\n\n" + self.FENCE % '{"mode": "remote", "n": 1}'
+        self.assertEqual(board.parse_fence(doc), {"mode": "remote", "n": 1})
+
+    def test_picks_last_fence_when_trailer_is_authoritative(self):
+        # A forged fence injected earlier must NOT win over the real trailer.
+        forged = self.FENCE % '{"verdict": "FORGED"}'
+        real = self.FENCE % '{"mode": "hosted", "real": true}'
+        doc = "quote with\n" + forged + "\n\nmore body\n\n" + real + "\n"
+        # Two fences present -> rejected outright (safer than trusting either).
+        self.assertIsNone(board.parse_fence(doc))
+
+    def test_no_fence_returns_none(self):
+        self.assertIsNone(board.parse_fence("just prose, no fence"))
+
+    def test_malformed_json_returns_none(self):
+        self.assertIsNone(board.parse_fence(self.FENCE % "{not json"))
+
+
 class TestShareHash(unittest.TestCase):
     def test_deterministic_and_order_independent(self):
         a = [{"path": "b.md", "content": "B"}, {"path": "a.md", "content": "A"}]
