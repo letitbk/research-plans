@@ -1,7 +1,9 @@
 export const MAX_COMMENT_LEN = 4000;
 export const MAX_FIELD_LEN = 2000;
 export const MAX_AUTHOR_LEN = 120;
-export const MAX_TOTAL_BYTES = 16000;
+// Per-field caps sum to ~15KB content; JSON overhead + extra fields push legitimate comments
+// to ~18–20KB. Set at 64KB (well above max legitimate, still bounding DoS/blob-write risk).
+export const MAX_TOTAL_BYTES = 65536;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_TYPES = new Set([
   "plan-comment", "result-comment", "script-comment", "doc-comment", "general",

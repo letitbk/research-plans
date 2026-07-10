@@ -41,4 +41,29 @@ describe("validateCommentBody", () => {
     };
     expect(validateCommentBody(oversized).ok).toBe(false);
   });
+  it("accepts a near-maximal legitimate comment (not false-rejected by the size cap)", () => {
+    const maximal = {
+      id: "11111111-1111-4111-8111-111111111111",
+      clientId: "c".repeat(200),
+      author: "A".repeat(120),
+      shareHash: "h".repeat(200),
+      docHash: "d".repeat(200),
+      annotation: {
+        type: "plan-comment",
+        component: "C".repeat(2000),
+        version: 1,
+        sectionHeading: "S".repeat(2000),
+        quote: "Q".repeat(2000),
+        excerpt: "E".repeat(2000),
+        script: "X".repeat(2000),
+        comment: "M".repeat(4000),
+        // Extra fields (unvalidated per-field, but pass overall validation)
+        reason: "R".repeat(1000),
+        context: "K".repeat(1000),
+      },
+    };
+    // sanity: this legitimate payload exceeds the OLD 16000 cap
+    expect(JSON.stringify(maximal).length).toBeGreaterThan(16000);
+    expect(validateCommentBody(maximal).ok).toBe(true);
+  });
 });
