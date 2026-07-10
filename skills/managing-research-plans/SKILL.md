@@ -82,7 +82,7 @@ If either is absent, this workflow does not apply. Stay silent about it, never c
 | `/research-plans:results` | Capture a results bundle (report, artifacts, scripts, metrics); no argument = reconcile/backfill walk; `--adopt` for pre-existing outputs |
 | `/research-plans:report` | Generate a shareable per-bundle report (md + pdf/docx via pandoc) into `plans/reports/` |
 | `/research-plans:review` | Two-stage review per `references/plan-rubric.md`: threshold verdict (is it a plan?), then engagement grade |
-| `/research-plans:board` | Browser board: tracker (with drift flags), plans + diffs, timeline, scorecards; live annotation, one-click agent review (Codex/Gemini/subagent panel), or static export |
+| `/research-plans:board` | Browser board: tracker (with drift flags), plans + diffs, timeline, scorecards; persistent live control surface (stable port, relaunch loop) with always-on approve/request-changes/review actions, one-click agent review (Codex/Gemini/subagent panel), or static export |
 
 Judgment criteria live in `references/`: `plan-rubric.md` (quality scoring), `split-criteria.md` (when a plan is too big), `explore-before-planning.md` (bounded data exploration before authoring).
 
