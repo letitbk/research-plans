@@ -129,6 +129,36 @@ def extract_payload(html: str) -> dict:
     return json.loads(m.group(1))
 
 
+class TestLocalRequestGuard(unittest.TestCase):
+    def test_rejects_cross_origin(self):
+        self.assertFalse(board.local_request_ok(
+            {"Origin": "https://evil.example", "Host": "127.0.0.1:8747",
+             "Content-Type": "application/json"}))
+
+    def test_rejects_foreign_host(self):
+        self.assertFalse(board.local_request_ok(
+            {"Origin": "http://127.0.0.1:8747", "Host": "evil.example",
+             "Content-Type": "application/json"}))
+
+    def test_rejects_unexpected_content_type(self):
+        self.assertFalse(board.local_request_ok(
+            {"Origin": "http://127.0.0.1:8747", "Host": "127.0.0.1:8747",
+             "Content-Type": "text/plain"}))
+
+    def test_accepts_localhost_same_origin_json(self):
+        self.assertTrue(board.local_request_ok(
+            {"Origin": "http://127.0.0.1:8747", "Host": "127.0.0.1:8747",
+             "Content-Type": "application/json"}))
+        self.assertTrue(board.local_request_ok(
+            {"Origin": "http://localhost:8747", "Host": "localhost:8747",
+             "Content-Type": "application/json"}))
+
+    def test_missing_origin_but_localhost_host_ok(self):
+        # Some non-browser clients omit Origin; localhost Host + json is fine.
+        self.assertTrue(board.local_request_ok(
+            {"Host": "127.0.0.1:8747", "Content-Type": "application/json"}))
+
+
 class TestParseFence(unittest.TestCase):
     FENCE = "```json board-feedback\n%s\n```"
 

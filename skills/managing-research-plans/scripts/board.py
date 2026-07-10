@@ -44,6 +44,34 @@ from results import changed_sources  # noqa: E402
 
 TICKET_TTL = 7 * 24 * 3600  # 7 days — sized to a resumable multi-session adoption
 
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+
+
+def _host_is_local(value):
+    if not value:
+        return False
+    host = value.split("]")[0].lstrip("[") if value.startswith("[") else value.split(":")[0]
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def local_request_ok(headers):
+    """Guard for the local board server's mutating endpoints. Rejects
+    cross-origin / non-localhost / wrong-content-type requests before any
+    state change, so a page the researcher merely visits can't forge feedback
+    or a sign-off ticket via a no-preflight 'simple request'."""
+    ct = (headers.get("Content-Type") or "").split(";")[0].strip()
+    if ct != "application/json":
+        return False
+    if not _host_is_local(headers.get("Host")):
+        return False
+    origin = headers.get("Origin")
+    if origin:  # when present it must be a localhost origin
+        rest = origin.split("://", 1)[-1]
+        if not _host_is_local(rest):
+            return False
+    return True
+
+
 SLOT = '<script id="board-data" type="application/json">{}</script>'
 SLOT_OPEN = '<script id="board-data" type="application/json">'
 GITIGNORE_LINES = [
@@ -598,6 +626,10 @@ def serve(root, payload, args):
             return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
         def do_POST(self):
+            if not local_request_ok(self.headers):
+                self.send_response(403)
+                self.end_headers()
+                return
             if self.path == "/api/feedback" and not gate_mode:
                 try:
                     body = self._read_body()
