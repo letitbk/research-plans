@@ -188,6 +188,17 @@ class TestLocalRequestGuard(unittest.TestCase):
             {"Host": "127.0.0.1:8747", "Content-Type": "application/json"}))
 
 
+class TestPublishTokenOk(unittest.TestCase):
+    def test_wrong_token_rejected(self):
+        self.assertFalse(board.publish_token_ok({"token": "nope"}, "the-real-token"))
+
+    def test_missing_token_rejected(self):
+        self.assertFalse(board.publish_token_ok({}, "the-real-token"))
+
+    def test_right_token_accepted(self):
+        self.assertTrue(board.publish_token_ok({"token": "the-real-token"}, "the-real-token"))
+
+
 class TestParseFence(unittest.TestCase):
     FENCE = "```json board-feedback\n%s\n```"
 

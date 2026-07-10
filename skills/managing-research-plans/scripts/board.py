@@ -596,6 +596,14 @@ def build_feedback_document(body, payload):
     )
 
 
+def publish_token_ok(body, token):
+    """True iff the request body carries the exact per-session publish token.
+    Constant-time comparison isn't needed: the token is generated fresh per
+    `serve()` invocation and never persisted, so there's nothing to time-attack
+    across processes."""
+    return body.get("token") == token
+
+
 def document_from_body(body, payload):
     """Prefer the client-assembled feedback document (schemaVersion 1 clients
     send feedbackDocument); fall back to server-side assembly for older
@@ -615,6 +623,8 @@ def serve(root, payload, args):
     batch_mode = payload.get("gateBatch") is not None
     batch_id = uuid.uuid4().hex[:8]
     amap = artifact_map(root, payload)
+    publish_token = hashlib.sha256(os.urandom(32)).hexdigest()
+    payload["publishToken"] = publish_token  # board reads window.__RP_PUBLISH_TOKEN__ from this
     html = inject(template_path().read_text(encoding="utf-8"), payload)
     html_bytes = html.encode("utf-8")
     done = threading.Event()
@@ -664,6 +674,26 @@ def serve(root, payload, args):
             if not local_request_ok(self.headers):
                 self.send_response(403)
                 self.end_headers()
+                return
+            if self.path == "/api/publish-web":
+                body = self._read_body()
+                if not publish_token_ok(body, publish_token):
+                    self._json(403, {"error": "bad token"})
+                    return
+                try:
+                    cfg = read_web_config(root)
+                    if cfg is None:
+                        self._json(200, {"setup": "needed"})
+                        return
+                    out = materialize_web_dir(root)
+                    rc, deploy_out = _vercel(["deploy", "--prod", "--yes"], cwd=str(out))
+                    if rc != 0:
+                        self._json(500, {"error": deploy_out[:400]})
+                        return
+                    self._json(200, {"url": cfg.get("url") or _first_url(deploy_out),
+                                     "unpulled": _count_unpulled(root, cfg)})
+                except SystemExit as e:
+                    self._json(500, {"error": str(e)})
                 return
             if self.path == "/api/feedback" and not gate_mode:
                 try:
