@@ -86,6 +86,7 @@ GITIGNORE_LINES = [
     "/execution/*/results/.staging-*/",
     "/.board-web/",
     "/.board-web-inbox/",
+    "/.board-web-pulled.json",
 ]
 
 FENCE_RE = re.compile(r"```json board-feedback\n(.*?)\n```", re.DOTALL)
@@ -889,6 +890,7 @@ def _count_unpulled(root, cfg):
 
 
 def publish_web(root, args):
+    ensure_gitignore(root / "plans")
     msg = node_preflight()
     if msg:
         die(msg)
@@ -911,6 +913,7 @@ def publish_web(root, args):
 
 
 def pull(root, args):
+    ensure_gitignore(root / "plans")
     cfg = read_web_config(root)
     if cfg is None:
         die("No web board configured. Run /research-plans:board --publish-web first.")
@@ -949,8 +952,10 @@ def pull(root, args):
                 "focus": None, "reviewer": author,
                 "shareHash": group[-1].get("shareHash")}
         doc = assemble_hosted_document([c["annotation"] for c in group], meta)
-        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", "%s-%s" % (author, client))[:60] or "group"
-        (inbox / ("%s.txt" % safe)).write_text(doc, encoding="utf-8")   # inbox FIRST
+        prefix = re.sub(r"[^A-Za-z0-9._-]+", "-", "%s-%s" % (author, client))[:40] or "group"
+        keyhash = hashlib.sha256(("%s\x00%s" % (author, client)).encode()).hexdigest()[:12]
+        fname = "%s-%s.txt" % (prefix, keyhash)
+        (inbox / fname).write_text(doc, encoding="utf-8")   # inbox FIRST
         docs.append(doc)
     # Only after every document is safely on disk do we mark ids pulled.
     _pulled_path(root).write_text(json.dumps(sorted(pulled | {c["id"] for c in new})))

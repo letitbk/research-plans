@@ -1173,6 +1173,52 @@ class TestPull(unittest.TestCase):
             finally:
                 import os; del os.environ["CLAUDE_PLUGIN_DATA"]
 
+    def test_collision_proof_inbox_filenames(self):
+        # Two DIFFERENT (author, clientId) groups that sanitize to the SAME
+        # filename prefix must not overwrite each other in the inbox — that
+        # would silently destroy a document after its id is marked pulled.
+        collision_comments = [
+            {"id": "cA", "clientId": "", "author": "Bob!", "shareHash": "h",
+             "annotation": {"type": "doc-comment", "view": "tracker", "quote": "q",
+                            "comment": "UNIQUE-TEXT-ALPHA"}},
+            {"id": "cB", "clientId": "", "author": "Bob ", "shareHash": "h",
+             "annotation": {"type": "doc-comment", "view": "tracker", "quote": "q",
+                            "comment": "UNIQUE-TEXT-BRAVO"}},
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            import os
+            root = Path(d); make_project(root)
+            os.environ["CLAUDE_PLUGIN_DATA"] = str(root / "data")
+            board.write_web_config(root, {"url": "https://x.vercel.app", "projectName": "p", "pullKey": "k"})
+            board._http_get_json = lambda url, headers: {"comments": collision_comments}
+            try:
+                import io, contextlib
+                with contextlib.redirect_stdout(io.StringIO()):
+                    board.pull(root, board.parse_args(["--pull"]))
+                files = list((root / "plans" / ".board-web-inbox").glob("*.txt"))
+                self.assertEqual(len(files), 2)  # distinct files, not one clobbering the other
+                contents = [f.read_text(encoding="utf-8") for f in files]
+                joined = "\n".join(contents)
+                self.assertIn("UNIQUE-TEXT-ALPHA", joined)
+                self.assertIn("UNIQUE-TEXT-BRAVO", joined)
+            finally:
+                del os.environ["CLAUDE_PLUGIN_DATA"]
+
+    def test_pull_writes_gitignore(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); self._setup(root)
+            try:
+                import io, contextlib
+                with contextlib.redirect_stdout(io.StringIO()):
+                    board.pull(root, board.parse_args(["--pull"]))
+                gi_path = root / "plans" / ".gitignore"
+                self.assertTrue(gi_path.exists())
+                gi = gi_path.read_text(encoding="utf-8")
+                self.assertIn("/.board-web-inbox/", gi)
+                self.assertIn("/.board-web-pulled.json", gi)
+            finally:
+                import os; del os.environ["CLAUDE_PLUGIN_DATA"]
+
 
 class TestArgGuards(unittest.TestCase):
     def test_multiple_actions_rejected(self):
