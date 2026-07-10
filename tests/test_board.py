@@ -1671,6 +1671,7 @@ def serve_in_thread(root, payload=None, **argkw):
     _wait_healthy(url)
     info = _read_lock_lenient(root / "plans")
     info.setdefault("port", args.port)
+    info["boardToken"] = payload.get("boardToken", "")
     return url, info, t
 
 
@@ -1715,6 +1716,12 @@ def http_json(url, path, body=None, headers=None):
         return e.code, parsed, dict(e.headers)
 
 
+def board_token_of(url):
+    """Per-boot token of a subprocess server, read from its served payload."""
+    with urllib.request.urlopen(url + "/", timeout=5) as r:
+        return extract_payload(r.read().decode("utf-8"))["boardToken"]
+
+
 def gate_project(root):
     """make_project + the dual opt-in markers signoff_gate requires."""
     make_project(root)
@@ -1742,7 +1749,7 @@ class TestHarness(unittest.TestCase):
             url, info, t = serve_in_thread(root, timeout=10)
             status, body, _ = http_json(url, "/api/feedback", body={
                 "annotations": [], "feedbackMarkdown": "lifecycle",
-                "payloadHash": "x",
+                "payloadHash": "x", "boardToken": info["boardToken"],
             })
             self.assertEqual(status, 200)
             t.join(timeout=8)
@@ -1913,18 +1920,20 @@ class TestBoardTokenPlumbing(unittest.TestCase):
                 payload = extract_payload(r.read().decode("utf-8"))
             self.assertRegex(payload["boardToken"], r"^[0-9a-f]{64}$")
 
-    def test_post_without_token_still_accepted_until_atomic_flip(self):
-        # Pinned pre-enforcement contract: plan 2/3 Task 6 flips this test to
-        # its 403 counterpart in the SAME commit that adds every client sender.
+    def test_post_without_token_is_403(self):
+        # Enforcement flipped atomically with every client sender + the built
+        # template (plan 2/3 Task 6) — no shipped-client dead window existed.
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             make_project(root)
             url, info, t = serve_in_thread(root)
             status, body, _ = http_json(url, "/api/feedback", body={
-                "annotations": [], "feedbackMarkdown": "no token yet",
+                "annotations": [], "feedbackMarkdown": "no token",
                 "payloadHash": "x",
             })
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 403)
+            self.assertEqual(body["error"], "bad-token")
+            self.assertFalse((root / "plans" / ".board-feedback.md").exists())
 
 
 class TestOrderSlot(unittest.TestCase):
@@ -1940,7 +1949,8 @@ class TestOrderSlot(unittest.TestCase):
     def test_accepted_post_returns_action_identity(self):
         url, info, t = serve_in_thread(self.root, timeout=15)
         status, body, _ = http_json(url, "/api/feedback", body={
-            "annotations": [], "feedbackMarkdown": "hello", "payloadHash": "x"})
+            "annotations": [], "feedbackMarkdown": "hello", "payloadHash": "x",
+            "boardToken": info["boardToken"]})
         self.assertEqual(status, 200)
         self.assertEqual(len(body["actionId"]), 32)
         self.assertEqual(body["bootId"], info["bootId"])
@@ -1950,12 +1960,13 @@ class TestOrderSlot(unittest.TestCase):
     def test_second_action_post_never_overwrites(self):
         url, info, t = serve_in_thread(self.root, timeout=15)
         s1, b1, _ = http_json(url, "/api/feedback", body={
-            "annotations": [], "feedbackMarkdown": "round one", "payloadHash": "x"})
+            "annotations": [], "feedbackMarkdown": "round one", "payloadHash": "x",
+            "boardToken": info["boardToken"]})
         self.assertEqual(s1, 200)
         try:
             s2, b2, _ = http_json(url, "/api/feedback", body={
                 "annotations": [], "feedbackMarkdown": "round two",
-                "payloadHash": "x"})
+                "payloadHash": "x", "boardToken": info["boardToken"]})
             self.assertEqual(s2, 409)
             self.assertEqual(b2["error"], "already-accepted")
             self.assertEqual(b2["actionId"], b1["actionId"])
@@ -1973,7 +1984,8 @@ class TestOrderSlot(unittest.TestCase):
                       "```json board-feedback\n{\"payloadHash\": \"h\"}\n```\n")
         status, body, _ = http_json(url, "/api/feedback", body={
             "feedbackDocument": client_doc, "annotations": [],
-            "feedbackMarkdown": "x", "payloadHash": "h"})
+            "feedbackMarkdown": "x", "payloadHash": "h",
+            "boardToken": info["boardToken"]})
         self.assertEqual(status, 200)
         doc = self.pending.read_text(encoding="utf-8")
         self.assertIn("prose marker", doc)
@@ -1985,7 +1997,8 @@ class TestOrderSlot(unittest.TestCase):
         url, info, t = serve_in_thread(self.root, timeout=15)
         status, body, _ = http_json(url, "/api/feedback", body={
             "feedbackDocument": "JUST PROSE\n", "annotations": [],
-            "feedbackMarkdown": "x", "payloadHash": "x"})
+            "feedbackMarkdown": "x", "payloadHash": "x",
+            "boardToken": info["boardToken"]})
         self.assertEqual(status, 200)
         doc = self.pending.read_text(encoding="utf-8")
         self.assertIn("JUST PROSE", doc)
@@ -2002,7 +2015,8 @@ class TestOrderSlot(unittest.TestCase):
         proc, url = spawn_board(self.root, "--gate", "01-data-prep/v2",
                                 "--timeout", "15")
         try:
-            status, body, _ = http_json(url, "/api/approve", body={})
+            status, body, _ = http_json(
+                url, "/api/approve", body={"boardToken": board_token_of(url)})
             self.assertEqual(status, 200)
             self.assertEqual(len(body["actionId"]), 32)
             out, err = proc.communicate(timeout=15)
@@ -2019,7 +2033,7 @@ class TestOrderSlot(unittest.TestCase):
         try:
             status, body, _ = http_json(url, "/api/deny", body={
                 "annotations": [], "feedbackMarkdown": "needs work",
-                "payloadHash": "x"})
+                "payloadHash": "x", "boardToken": board_token_of(url)})
             self.assertEqual(status, 200)
             out, err = proc.communicate(timeout=15)
             self.assertEqual(proc.returncode, 3)
@@ -2041,19 +2055,19 @@ class TestSignoffAction(unittest.TestCase):
     def tearDown(self):
         self.td.cleanup()
 
-    def _signoff_body(self, component="01-data-prep", version=2,
+    def _signoff_body(self, token, component="01-data-prep", version=2,
                       decision="approve", reason=None):
         action = {"kind": "signoff", "component": component,
                   "version": version, "decision": decision}
         if reason is not None:
             action["reason"] = reason
         return {"annotations": [], "feedbackMarkdown": "via cluster",
-                "payloadHash": "x", "action": action}
+                "payloadHash": "x", "boardToken": token, "action": action}
 
     def test_approve_writes_displayed_draft_ticket(self):
         import hashlib
         url, info, t = serve_in_thread(self.root, timeout=15)
-        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body(info["boardToken"]))
         self.assertEqual(status, 200)
         self.assertTrue(self.ticket.exists())
         tdoc = json.loads(self.ticket.read_text(encoding="utf-8"))
@@ -2070,8 +2084,9 @@ class TestSignoffAction(unittest.TestCase):
             self.draft.write_text(
                 self.draft.read_text(encoding="utf-8") + "\nEDITED AFTER BOOT\n",
                 encoding="utf-8")
-            status, body, _ = http_json(url, "/api/feedback",
-                                        body=self._signoff_body())
+            status, body, _ = http_json(
+                url, "/api/feedback",
+                body=self._signoff_body(board_token_of(url)))
             self.assertEqual(status, 409)
             self.assertEqual(body["error"], "stale-draft")
             self.assertFalse(self.ticket.exists())
@@ -2082,9 +2097,10 @@ class TestSignoffAction(unittest.TestCase):
     def test_deleted_draft_rejected_exit_4(self):
         proc, url = spawn_board(self.root, "--timeout", "15")
         try:
+            tok = board_token_of(url)
             self.draft.unlink()
             status, body, _ = http_json(url, "/api/feedback",
-                                        body=self._signoff_body())
+                                        body=self._signoff_body(tok))
             self.assertEqual(status, 409)
             self.assertEqual(body["error"], "stale-draft")
             self.assertEqual(proc.wait(timeout=15), 4)
@@ -2095,15 +2111,17 @@ class TestSignoffAction(unittest.TestCase):
         (self.draft.parent / ".draft-v1.md").write_text(
             "# old draft\n", encoding="utf-8")
         url, info, t = serve_in_thread(self.root, timeout=15)
-        status, body, _ = http_json(url, "/api/feedback",
-                                    body=self._signoff_body(version=1))
+        status, body, _ = http_json(
+            url, "/api/feedback",
+            body=self._signoff_body(info["boardToken"], version=1))
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "bad-action")
 
     def test_unknown_component_400(self):
         url, info, t = serve_in_thread(self.root, timeout=15)
         status, body, _ = http_json(
-            url, "/api/feedback", body=self._signoff_body(component="99-nope"))
+            url, "/api/feedback",
+            body=self._signoff_body(info["boardToken"], component="99-nope"))
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "bad-action")
 
@@ -2112,7 +2130,8 @@ class TestSignoffAction(unittest.TestCase):
             "# Data prep v2 draft\n\nDo it better.\n\nSigned off: sneaky\n",
             encoding="utf-8")
         url, info, t = serve_in_thread(self.root, timeout=15)
-        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        status, body, _ = http_json(
+            url, "/api/feedback", body=self._signoff_body(info["boardToken"]))
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "trailer-in-draft")
         self.assertFalse(self.ticket.exists())
@@ -2121,7 +2140,8 @@ class TestSignoffAction(unittest.TestCase):
         url, info, t = serve_in_thread(self.root, timeout=15)
         status, body, _ = http_json(
             url, "/api/feedback",
-            body=self._signoff_body(decision="request-changes", reason="tighten"))
+            body=self._signoff_body(info["boardToken"],
+                                    decision="request-changes", reason="tighten"))
         self.assertEqual(status, 200)
         self.assertFalse(self.ticket.exists())
 
@@ -2130,7 +2150,8 @@ class TestSignoffAction(unittest.TestCase):
         (self.root / "CLAUDE.md").write_text(
             "<!-- research-plans:start -->\n", encoding="utf-8")
         url, info, t = serve_in_thread(self.root, timeout=15)
-        status, body, _ = http_json(url, "/api/feedback", body=self._signoff_body())
+        status, body, _ = http_json(
+            url, "/api/feedback", body=self._signoff_body(info["boardToken"]))
         self.assertEqual(status, 200)
         signed = (self.draft.read_text(encoding="utf-8").rstrip("\n")
                   + "\n\nSigned off: BK, 2026-07-10\n")
@@ -2191,7 +2212,7 @@ class TestServerAuthoredActionDocs(unittest.TestCase):
             url, info, t = serve_in_thread(root, timeout=15)
             status, body, _ = http_json(url, "/api/feedback", body={
                 "annotations": [], "feedbackMarkdown": "please approve",
-                "payloadHash": "x",
+                "payloadHash": "x", "boardToken": info["boardToken"],
                 "feedbackDocument": "SPOOFED CLIENT DOCUMENT",
                 "action": {"kind": "signoff", "component": "01-data-prep",
                            "version": 2, "decision": "approve"}})

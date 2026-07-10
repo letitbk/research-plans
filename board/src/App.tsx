@@ -25,6 +25,14 @@ import {
 import { liveDraftKey, loadDrafts, clearSubmitted } from "./lib/drafts";
 import FeedbackPanel, { type SubmitState } from "./components/FeedbackPanel";
 import { useHeaderOffset, useMediaQuery } from "./lib/layoutHooks";
+import ConnBanner from "./components/ConnBanner";
+import {
+  initialConn,
+  reduceConn,
+  shouldReload,
+  POLL_MS,
+  type ConnEvent,
+} from "./lib/reconnect";
 import { navTargetFor, type NavTarget } from "./lib/navTarget";
 import type { ReopenRequest, SignoffRequest } from "./lib/types";
 import type {
@@ -464,6 +472,7 @@ export default function App({ data }: { data: BoardData }) {
 
   const submit = async () => {
     setSubmitState("sending");
+    dispatchConn({ type: "submit" });
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -473,13 +482,19 @@ export default function App({ data }: { data: BoardData }) {
           feedbackMarkdown,
           payloadHash,
           feedbackDocument,
+          boardToken: data.boardToken,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const accepted = await handleActionResponse(res);
+      if (!accepted) {
+        setSubmitState("idle");
+        return;
+      }
       setSubmitState("sent");
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
+      dispatchConn({ type: "post-failed" });
       setSubmitState("failed");
     }
   };
@@ -502,6 +517,7 @@ export default function App({ data }: { data: BoardData }) {
       reviewRequest: req,
     });
     setSubmitState("sending");
+    dispatchConn({ type: "submit" });
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -512,13 +528,19 @@ export default function App({ data }: { data: BoardData }) {
           payloadHash,
           feedbackDocument: doc,
           reviewRequest: req,
+          boardToken: data.boardToken,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const accepted = await handleActionResponse(res);
+      if (!accepted) {
+        setSubmitState("idle");
+        return;
+      }
       setSubmitState("sent");
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
+      dispatchConn({ type: "post-failed" });
       setSubmitState("failed");
     }
   };
@@ -546,7 +568,7 @@ export default function App({ data }: { data: BoardData }) {
       const res = await fetch("/api/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ boardToken: data.boardToken }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("approved");
@@ -566,6 +588,7 @@ export default function App({ data }: { data: BoardData }) {
           feedbackMarkdown,
           payloadHash,
           feedbackDocument,
+          boardToken: data.boardToken,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -593,6 +616,7 @@ export default function App({ data }: { data: BoardData }) {
       reportRequest: req,
     });
     setSubmitState("sending");
+    dispatchConn({ type: "submit" });
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -603,13 +627,19 @@ export default function App({ data }: { data: BoardData }) {
           payloadHash,
           feedbackDocument: doc,
           reportRequest: req,
+          boardToken: data.boardToken,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const accepted = await handleActionResponse(res);
+      if (!accepted) {
+        setSubmitState("idle");
+        return;
+      }
       setSubmitState("sent");
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
+      dispatchConn({ type: "post-failed" });
       setSubmitState("failed");
     }
   };
@@ -634,6 +664,7 @@ export default function App({ data }: { data: BoardData }) {
       signoff: req,
     });
     setSubmitState("sending");
+    dispatchConn({ type: "submit" });
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -644,13 +675,19 @@ export default function App({ data }: { data: BoardData }) {
           payloadHash,
           feedbackDocument: doc,
           action: { kind: "signoff", ...req },
+          boardToken: data.boardToken,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const accepted = await handleActionResponse(res);
+      if (!accepted) {
+        setSubmitState("idle");
+        return;
+      }
       setSubmitState("sent");
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
+      dispatchConn({ type: "post-failed" });
       setSubmitState("failed");
     }
   };
@@ -675,6 +712,7 @@ export default function App({ data }: { data: BoardData }) {
       reopen: req,
     });
     setSubmitState("sending");
+    dispatchConn({ type: "submit" });
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -684,13 +722,19 @@ export default function App({ data }: { data: BoardData }) {
           feedbackMarkdown: md,
           payloadHash,
           feedbackDocument: doc,
+          boardToken: data.boardToken,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const accepted = await handleActionResponse(res);
+      if (!accepted) {
+        setSubmitState("idle");
+        return;
+      }
       setSubmitState("sent");
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
+      dispatchConn({ type: "post-failed" });
       setSubmitState("failed");
     }
   };
@@ -750,7 +794,7 @@ export default function App({ data }: { data: BoardData }) {
     );
   }
 
-  if (submitState === "sent") {
+  if (submitState === "sent" && !canPost) {
     return (
       <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
         <div className="absolute right-4 top-4">
@@ -770,6 +814,77 @@ export default function App({ data }: { data: BoardData }) {
       </div>
     );
   }
+
+  // ---- Reconnect (control surface, spec §4): health poll + reload machine.
+  const [conn, setConn] = useState(() => initialConn(data.projectId ?? ""));
+  const connRef = useRef(conn);
+  connRef.current = conn;
+  const dispatchConn = (e: ConnEvent) => setConn((st) => reduceConn(st, e));
+  useEffect(() => {
+    if (!canPost) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await fetch("/api/health", { cache: "no-store" });
+        if (!r.ok) throw new Error("bad health");
+        const h = (await r.json()) as { bootId: string; projectId: string };
+        if (shouldReload(connRef.current, h)) {
+          location.reload();
+          return;
+        }
+        dispatchConn({ type: "health", bootId: h.bootId,
+                       projectId: h.projectId, now: Date.now() });
+      } catch {
+        dispatchConn({ type: "health-miss", now: Date.now() });
+      }
+    }, POLL_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canPost]);
+  const connBlocked =
+    conn.phase.kind === "accepted" ||
+    conn.phase.kind === "applying" ||
+    conn.phase.kind === "stalled" ||
+    conn.phase.kind === "sleeping";
+  // Accepted/409 bookkeeping shared by every live action sender. Returns true
+  // when THIS post was accepted; a 409 (slot taken / stale draft) parks the
+  // client in applying — the relaunched server triggers the reload.
+  const handleActionResponse = async (res: Response): Promise<boolean> => {
+    if (res.ok) {
+      const rb = (await res.json().catch(() => null)) as
+        | { actionId?: string; bootId?: string; projectId?: string }
+        | null;
+      if (rb?.actionId) {
+        dispatchConn({ type: "post-accepted", actionId: rb.actionId,
+                       bootId: rb.bootId ?? "",
+                       projectId: rb.projectId ?? (data.projectId ?? ""),
+                       now: Date.now() });
+      }
+      return true;
+    }
+    if (res.status === 409) {
+      const eb = (await res.json().catch(() => null)) as
+        | { error?: string; actionId?: string }
+        | null;
+      showSyncNotice(
+        eb?.error === "stale-draft"
+          ? "The plan changed on disk — the board is refreshing."
+          : "The board is already applying your earlier action.",
+      );
+      dispatchConn({ type: "post-accepted", actionId: eb?.actionId ?? "pending",
+                     bootId: "", projectId: data.projectId ?? "",
+                     now: Date.now() });
+      return false;
+    }
+    throw new Error(`HTTP ${res.status}`);
+  };
+  const guardConn = <A extends unknown[]>(fn: (...a: A) => void) =>
+    (...a: A) => {
+      if (connBlocked) {
+        showSyncNotice("Hold on — the board is applying your previous action.");
+        return;
+      }
+      fn(...a);
+    };
 
   // ---- Click-sync (control surface, spec §2): card -> highlight and back.
   const navTokenRef = useRef(0);
@@ -850,7 +965,7 @@ export default function App({ data }: { data: BoardData }) {
     hosted,
     gate,
     canPost,
-    submitState,
+    submitState: connBlocked && submitState !== "failed" ? ("sending" as SubmitState) : submitState,
     pendingVerdict,
     reviewer,
     savingIds,
@@ -980,6 +1095,7 @@ export default function App({ data }: { data: BoardData }) {
             Reading works here; commenting works best on a computer
           </div>
         )}
+        {canPost && <ConnBanner phase={conn.phase} />}
       </header>
 
       <div className="mx-auto flex w-full max-w-[1440px]">
@@ -988,7 +1104,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "tracker" && (
           <Tracker
             data={data}
-            onSignoff={submitSignoff}
+            onSignoff={guardConn(submitSignoff)}
             canAnnotate={canAnnotate}
             annotations={annotations}
             onAddDocComment={addDocComment}
@@ -1003,7 +1119,7 @@ export default function App({ data }: { data: BoardData }) {
               setTab("results");
             }}
             canPost={canPost}
-            onRequestReview={requestReview}
+            onRequestReview={guardConn(requestReview)}
             onOpenArchive={
               data.files.archives?.length ? () => setTab("archive") : undefined
             }
@@ -1012,7 +1128,7 @@ export default function App({ data }: { data: BoardData }) {
         {tab === "plans" && (
           <PlanReader
             data={data}
-            onSignoff={submitSignoff}
+            onSignoff={guardConn(submitSignoff)}
             navRequest={navRequest?.tab === "plans" ? { token: navRequest.token, planPath: navRequest.planPath } : null}
             canAnnotate={canAnnotate}
             selectedComponent={selectedComponent}
@@ -1025,13 +1141,13 @@ export default function App({ data }: { data: BoardData }) {
               setTab("results");
             }}
             canPost={canPost}
-            onRequestReview={requestReview}
+            onRequestReview={guardConn(requestReview)}
           />
         )}
         {tab === "results" && (
           <Results
             data={data}
-            onReopen={submitReopen}
+            onReopen={guardConn(submitReopen)}
             navRequest={navRequest?.tab === "results" ? { token: navRequest.token, resultsVersion: navRequest.resultsVersion, scriptPath: navRequest.scriptPath } : null}
             canAnnotate={canAnnotate}
             canPost={canPost}
@@ -1043,8 +1159,8 @@ export default function App({ data }: { data: BoardData }) {
             onPaintResult={onPaintResult}
             onVerdict={onVerdict}
             focusResults={data.focusResults ?? null}
-            onRequestReview={requestReview}
-            onRequestReport={requestReport}
+            onRequestReview={guardConn(requestReview)}
+            onRequestReport={guardConn(requestReport)}
           />
         )}
         {tab === "archive" && (

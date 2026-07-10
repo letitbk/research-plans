@@ -870,6 +870,19 @@ def serve(root, payload, args):
                 self.send_response(403)
                 self.end_headers()
                 return
+            body = None
+            if self.path.startswith("/api/"):
+                try:
+                    body = self._read_body()
+                except Exception:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+                # Per-boot token on every mutating route (spec §5.4) — landed
+                # atomically with all client senders + the rebuilt template.
+                if not token_ok(body, board_token):
+                    self._json(403, {"error": "bad-token"})
+                    return
             if self.path == "/publish-web":
                 try:
                     body = self._read_body()
@@ -895,12 +908,6 @@ def serve(root, payload, args):
                     self._json(500, {"error": str(e)})
                 return
             if self.path == "/api/feedback" and not gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 action = body.get("action")
                 ticket_args = None
                 validated = None
@@ -956,10 +963,6 @@ def serve(root, payload, args):
                 done.set()
                 return
             if self.path == "/api/approve" and gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    body = {}
                 comment = (body.get("comment") or "").strip()
 
                 def _approve_doc(aid):
@@ -983,12 +986,6 @@ def serve(root, payload, args):
                 done.set()
                 return
             if self.path == "/api/deny" and gate_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 aid = accept_order(
                     lambda aid: document_from_body(body, payload, action_id=aid),
                     3, True)
@@ -1003,12 +1000,6 @@ def serve(root, payload, args):
             # ---- Batch sign-off wizard: each approval writes its ticket NOW
             # (incremental persistence); the session ends only on /api/batch/done. ----
             if self.path == "/api/batch/approve" and batch_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 comp, ver = body.get("component"), body.get("proposedVersion")
                 entry = next(
                     (e for e in payload["gateBatch"]
@@ -1024,12 +1015,6 @@ def serve(root, payload, args):
                 self._json(200, {"ok": True, "approved": len(result["approved"])})
                 return
             if self.path == "/api/batch/reject" and batch_mode:
-                try:
-                    body = self._read_body()
-                except Exception:
-                    self.send_response(400)
-                    self.end_headers()
-                    return
                 result["rejected"].append(
                     [body.get("component"), body.get("proposedVersion"),
                      (body.get("comment") or "").strip()])
