@@ -5,6 +5,8 @@ allowed-tools: Read, Write, Edit, Glob, Grep, AskUserQuestion, Bash(python3:*), 
 
 Reconcile the plan artifacts with what actually happened. Skill context: `${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/SKILL.md`. Requires an initialized project (`plans/master-plan.md` with its marker); if absent, say so and stop.
 
+**Model nudge** (first, before the web board check). Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/scripts/models.py stage sync`. Empty output → no profile or no usable row → say nothing and continue; relay any stderr warning once (a malformed profile row is fixed by `/research-plans:models`). Output is a JSON row; when its model is not `inherit` and differs from the model you are running as (you know your own identity), print exactly one line — `Model profile: this stage is set to <model>; you're on <current>. Switch with /model <model> (safe mid-conversation — nothing is lost), or continue as-is.` — substituting the profile's model and your current one. Then proceed; never block on the nudge, never repeat it later in the session.
+
 **Web board check** (before step 1). If the project has a hosted board configured, check for unpulled collaborator comments before anything else — a researcher who lives in `/sync` for weeks would otherwise never see feedback sitting on it. Check quietly and cheaply:
 
 `python3 -c "import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/skills/managing-research-plans/scripts'); import board; root = board.find_root(); cfg = board.read_web_config(root); print(board._count_unpulled(root, cfg) if cfg else -1)"`
