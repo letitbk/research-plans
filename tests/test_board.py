@@ -2492,6 +2492,7 @@ class TestPullStaleness(unittest.TestCase):
         v = board.fnv1a_hex("plan body\n")
         self.assertEqual(len(v), 8)
         self.assertEqual(v, board.fnv1a_hex("plan body\n"))  # deterministic
+        self.assertEqual(board.fnv1a_hex("plan body\n"), "723e3740")
         # non-ASCII goes through UTF-16 code units, not bytes
         self.assertNotEqual(board.fnv1a_hex("café"), board.fnv1a_hex("cafe"))
 

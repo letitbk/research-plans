@@ -5,6 +5,7 @@ import Results from "./views/Results";
 import Timeline from "./views/Timeline";
 import Scorecard from "./views/Scorecard";
 import Archive from "./views/Archive";
+import Reports from "./views/Reports";
 import BatchGate from "./views/BatchGate";
 import ThemeToggle from "./components/ThemeToggle";
 import { allFiles, payloadContentHash } from "./lib/parse";
@@ -55,6 +56,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "tracker", label: "Tracker" },
   { id: "plans", label: "Plans" },
   { id: "results", label: "Results" },
+  { id: "reports", label: "Reports" },
   { id: "timeline", label: "Timeline" },
   { id: "reviews", label: "Reviews" },
 ];
@@ -161,11 +163,13 @@ export default function App({ data }: { data: BoardData }) {
   const [tab, setTab] = useState<Tab>(
     gate
       ? "plans"
-      : data.focusResults != null
-        ? "results"
-        : data.focus
-          ? "plans"
-          : "tracker",
+      : data.focusView === "reports"
+        ? "reports"
+        : data.focusResults != null
+          ? "results"
+          : data.focus
+            ? "plans"
+            : "tracker",
   );
   const [selectedComponent, setSelectedComponent] = useState<string | null>(
     gate?.component ?? data.focus,
@@ -927,6 +931,19 @@ export default function App({ data }: { data: BoardData }) {
     }
     scrollToSelector(`mark[data-annotation="${a.id}"], [data-annotation="${a.id}"]`);
   };
+  // consumed by the report chips (next task)
+  const openReport = (slug: string, resultsVersion: number) => {
+    setSelectedComponent(slug);
+    setTab("reports");
+    navTokenRef.current += 1;
+    setNavRequest({
+      tab: "reports",
+      resultsVersion,
+      annotationId: "",
+      anchored: false,
+      token: navTokenRef.current,
+    });
+  };
   const openCard = (id: string) => {
     setDrawerOpen(true);
     scrollToSelector(`[data-card-id="${id}"]`);
@@ -1065,8 +1082,8 @@ export default function App({ data }: { data: BoardData }) {
               You’ve been asked to review this research plan.
             </span>{" "}
             Select text in any view to attach a comment — plans, tracker rows,
-            timeline entries, results, and reviews all take them. When you’re
-            done, open Feedback and press
+            timeline entries, results, reports, and reviews all take them.
+            When you’re done, open Feedback and press
             “Download feedback file”, then email the downloaded file back to
             the researcher. Don’t move or rename this HTML file until you’ve
             downloaded your feedback — your comments are saved by this browser
@@ -1180,6 +1197,24 @@ export default function App({ data }: { data: BoardData }) {
               setSelectedComponent(slug);
               setTab("results");
             }}
+          />
+        )}
+        {tab === "reports" && (
+          <Reports
+            data={data}
+            canAnnotate={canAnnotate}
+            selectedComponent={selectedComponent}
+            onSelectComponent={setSelectedComponent}
+            annotations={annotations}
+            onAddDocComment={addDocComment}
+            onPaintResult={onPaintResult}
+            onRequestReport={guardConn(requestReport)}
+            focusResults={data.focusView === "reports" ? (data.focusResults ?? null) : null}
+            navRequest={
+              navRequest?.tab === "reports"
+                ? { token: navRequest.token, resultsVersion: navRequest.resultsVersion }
+                : null
+            }
           />
         )}
         {tab === "timeline" && (

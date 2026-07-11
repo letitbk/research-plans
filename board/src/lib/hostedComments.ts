@@ -1,4 +1,5 @@
 import type { Annotation, BoardData, ExecutionPlanGroup, StoredComment } from "./types";
+import { REPORT_DOCKEY_RE, stripMarkerLine } from "./reportMarker";
 
 export function newUuid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -37,6 +38,17 @@ export function targetHash(data: BoardData, a: Annotation): string | null {
     const g = findExecGroup(data, a.component);
     const rv = g?.results?.find((r) => r.resultsVersion === a.resultsVersion);
     return rv ? hashContent(JSON.stringify(rv)) : null;
+  }
+  if (a.type === "doc-comment" && a.view === "reports") {
+    const m = REPORT_DOCKEY_RE.exec(a.docKey);
+    if (!m) return null;
+    const g = findExecGroup(data, m[1]);
+    const rv = g?.results?.find((r) => r.resultsVersion === Number(m[2]));
+    // Marker-stripped: regeneration that only restamps the marker must not
+    // stale every comment on an unchanged report body.
+    return rv?.publishedReport
+      ? hashContent(stripMarkerLine(rv.publishedReport.content))
+      : null;
   }
   // doc-comment (a derived view) and general: no single file — fall back to board hash.
   return null;
