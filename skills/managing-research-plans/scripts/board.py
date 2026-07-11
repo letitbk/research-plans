@@ -211,6 +211,8 @@ def payload_files(payload):
             if b.get("verdictRaw"):
                 out.append(b["verdictRaw"])
             out.extend(b.get("scripts", []))
+            if b.get("publishedReport"):
+                out.append(b["publishedReport"])
     out.extend(f["reviews"])
     if f.get("history"):
         out.append(f["history"])
@@ -257,6 +259,8 @@ def collect_results(root, comp_dir):
             "verdictRaw": None,
             "scripts": [],
             "assets": {},
+            "publishedReport": None,
+            "reportFormats": {"pdf": False, "docx": False},
         }
         if (rdir / "report.md").is_file():
             bundle["report"] = read_file(root, str((rdir / "report.md").relative_to(root)))
@@ -272,6 +276,16 @@ def collect_results(root, comp_dir):
             for sf in sorted(sdir.iterdir()):
                 if sf.is_file():
                     bundle["scripts"].append(read_file(root, str(sf.relative_to(root))))
+        rep_name = "%s-r%d-report" % (comp_dir.name, int(m.group(1)))
+        rep_dir = root / "plans" / "reports"
+        rep_md = rep_dir / (rep_name + ".md")
+        bundle["publishedReport"] = (
+            read_file(root, str(rep_md.relative_to(root))) if rep_md.is_file() else None
+        )
+        bundle["reportFormats"] = {
+            "pdf": (rep_dir / (rep_name + ".pdf")).is_file(),
+            "docx": (rep_dir / (rep_name + ".docx")).is_file(),
+        }
         bundles.append(bundle)
     bundles.sort(key=lambda b: b["resultsVersion"])
     return bundles
@@ -490,6 +504,8 @@ def collect_payload(root, mode, focus):
         all_paths.extend(v["path"] for v in g["versions"])
         all_paths.extend(s["path"] for s in g.get("draftSnapshots", []))
         all_paths.extend(b["manifestRaw"]["path"] for b in g.get("results", []))
+        all_paths.extend(b["publishedReport"]["path"] for b in g.get("results", [])
+                         if b.get("publishedReport"))
     all_paths.extend(r["path"] for r in reviews)
     if history is not None:
         all_paths.append("plans/history.md")

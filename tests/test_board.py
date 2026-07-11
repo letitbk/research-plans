@@ -121,6 +121,20 @@ def add_archive(root: Path):
     return arch
 
 
+def add_report(root: Path):
+    """A generated report (md + pdf, no docx) for 01-data-prep r1."""
+    rep = root / "plans" / "reports"
+    rep.mkdir(parents=True, exist_ok=True)
+    (rep / "01-data-prep-r1-report.md").write_text(
+        '<!-- rp-report {"schemaVersion": 1, "component": "01-data-prep", "bundle": 1, '
+        '"plan": 1, "verdict": "accepted", "generated": "2026-07-03T12:00"} -->\n'
+        "# Data prep — Report (r1)\n\nFindings body.\n",
+        encoding="utf-8",
+    )
+    (rep / "01-data-prep-r1-report.pdf").write_bytes(b"%PDF-1.4 stub")
+    return rep
+
+
 def run_board(cwd, *argv):
     return subprocess.run(
         [sys.executable, str(BOARD), *argv],
@@ -2387,6 +2401,39 @@ class TestNeutralizedAnnotationActionKeys(unittest.TestCase):
         doc = board.assemble_hosted_document([a], {"sessionId": "s", "generatedAt": "",
                                                    "focus": None, "reviewer": "r", "shareHash": "h"})
         self.assertNotIn("reopen", doc)
+
+
+class TestPublishedReportCollection(unittest.TestCase):
+    def _payload(self, root, mode="live"):
+        return board.collect_payload(root, mode, None)
+
+    def test_bundle_without_report_has_absent_shape(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            p = self._payload(root)
+            b = p["files"]["executionPlans"][0]["results"][0]
+            self.assertIsNone(b["publishedReport"])
+            self.assertEqual(b["reportFormats"], {"pdf": False, "docx": False})
+
+    def test_bundle_with_report_collects_content_and_formats(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); add_report(root)
+            p = self._payload(root)
+            b = p["files"]["executionPlans"][0]["results"][0]
+            self.assertEqual(b["publishedReport"]["path"],
+                             "plans/reports/01-data-prep-r1-report.md")
+            self.assertIn("Findings body.", b["publishedReport"]["content"])
+            self.assertEqual(b["reportFormats"], {"pdf": True, "docx": False})
+
+    def test_payload_files_and_share_hash_cover_the_report(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            base = board.share_hash(board.payload_files(self._payload(root, "remote")))
+            add_report(root)
+            p2 = self._payload(root, "remote")
+            paths = [f["path"] for f in board.payload_files(p2)]
+            self.assertIn("plans/reports/01-data-prep-r1-report.md", paths)
+            self.assertNotEqual(base, board.share_hash(board.payload_files(p2)))
 
 
 if __name__ == "__main__":
