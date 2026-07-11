@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Markdown from "../components/Markdown";
 import DiffView from "../components/DiffView";
 import AnnotationLayer from "../components/AnnotationLayer";
@@ -398,9 +405,8 @@ export default function PlanReader({
             {(group.results ?? [])
               .filter((b) => b.manifest?.planVersion === doc.version)
               .map((b) => (
-                <>
+                <Fragment key={b.dir}>
                   <button
-                    key={b.dir}
                     className="rounded-full border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-2 py-0.5 font-medium text-blue-700 dark:text-blue-400 hover:border-stone-500 dark:hover:border-stone-400"
                     onClick={() => onOpenResults(group.component)}
                   >
@@ -413,14 +419,13 @@ export default function PlanReader({
                   </button>
                   {b.publishedReport && onOpenReport && (
                     <button
-                      key={`${b.dir}-report`}
                       className="rounded-full border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-stone-900 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-400 hover:border-emerald-500"
                       onClick={() => onOpenReport(group.component, b.resultsVersion)}
                     >
                       report
                     </button>
                   )}
-                </>
+                </Fragment>
               ))}
           </div>
         )}
