@@ -27,6 +27,7 @@ function summaryOnlyFindingData(): BoardData {
           },
           manifestRaw: { path: "plans/execution/01-x/results/r1/manifest.json", content: "{}" },
           report: null, verdict: null, verdictRaw: null, scripts: [], assets: {},
+          publishedReport: null, reportFormats: { pdf: false, docx: false },
         }],
       }],
       reviews: [],

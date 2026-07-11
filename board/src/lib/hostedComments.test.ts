@@ -43,8 +43,12 @@ function resultsBundle(resultsVersion: number, manifestContent: string): Results
     verdictRaw: null,
     scripts: [],
     assets: {},
+    publishedReport: null,
   };
 }
+
+// hostedComments.test.ts — cross-language pin, mirrors tests/test_board.py
+// TestPullStaleness. Task 10 wires targetHash; this documents the contract now.
 
 const planComment = (): PlanCommentAnnotation => ({
   id: "n1", type: "plan-comment", planPath: "plans/execution/01-x/v1.md", component: "01-x", version: 1,

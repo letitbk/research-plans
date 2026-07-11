@@ -49,7 +49,7 @@ import type {
   VerdictRequest,
 } from "./lib/types";
 
-type Tab = "tracker" | "plans" | "results" | "timeline" | "reviews" | "archive";
+type Tab = "tracker" | "plans" | "results" | "timeline" | "reviews" | "archive" | "reports";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "tracker", label: "Tracker" },
