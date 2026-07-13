@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Sign-off routes harmonized; batch made explicit.** A timed-out sign-off gate now saves the proposal back as the component's `.draft-vN.md` and directs recovery to the researcher's Approve on the persistent board (which mints the same durable ticket) — the timeout message no longer suggests the headless bypass. `board.py --gate-batch` is now explicitly the `/adopt` bulk flow: it refuses fewer than 2 drafts still awaiting approval unless `--allow-single` (one-component adoptions, resumed batches), and the gate's ticket-error messages stop steering agents toward batch mode.
+
+### Fixed
+- The newest pending draft is now selected numerically — `.draft-v10.md` no longer loses to `.draft-v9.md` (payload collection and batch collection).
+- `/adopt` docs: batch approval writes a ticket (the session then writes the admitted `vN.md`), not the plan file itself.
+
 ## [0.15.0] - 2026-07-12
 
 The board learns to read: a new Reports tab renders each component's shareable report right on the board — figures inline, version chips, staleness flags, PDF/DOCX downloads — and the Results view slims down into a reviewing surface with validation up front and one Evidence gallery.
