@@ -130,9 +130,10 @@ describe("viewKind (artifact viewer)", () => {
 });
 
 describe("inlineSafe / anchorProps (artifact viewer)", () => {
-  it("marks text, raster, svg, pdf as inline-safe; html/xlsx/unknown not", () => {
-    for (const f of ["a.md", "a.csv", "a.png", "a.svg", "a.pdf"]) expect(inlineSafe(f)).toBe(true);
-    for (const f of ["a.html", "a.xlsx", "a.xml", "noext"]) expect(inlineSafe(f)).toBe(false);
+  it("marks text, raster, pdf as inline-safe; svg/html/xlsx/unknown not", () => {
+    for (const f of ["a.md", "a.csv", "a.png", "a.pdf"]) expect(inlineSafe(f)).toBe(true);
+    // svg: served inline for <img> figures but sandboxed — anchors download
+    for (const f of ["a.svg", "a.html", "a.xlsx", "a.xml", "noext"]) expect(inlineSafe(f)).toBe(false);
     expect(inlineSafe(null)).toBe(false);
   });
   it("live inline-safe URLs open in a new tab without download", () => {

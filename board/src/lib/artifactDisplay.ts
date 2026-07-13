@@ -35,12 +35,15 @@ export function viewKind(f: string | null | undefined): ViewKind | null {
   return VIEW_KINDS[fileExt(f)] ?? null;
 }
 
-// Mirrors board.py artifact_headers: types the live server serves inline.
-// Active/unknown types (html, xml, xlsx, …) must keep the download attribute
-// — never a same-origin navigation path for active content (codex blocker).
+// Anchor policy: types safe to open in a new tab from a live board. Active
+// or unknown types (html, xml, xlsx, …) must keep the download attribute —
+// never a same-origin navigation path for active content (codex blocker).
+// .svg is deliberately absent: the server serves it inline for <img> figures
+// but sandboxes it (CSP), and top-level navigation to a sandboxed svg stalls
+// Chrome's load events — so svg links download rather than navigate.
 const INLINE_SAFE_EXTS = new Set([
   ...Object.keys(VIEW_KINDS),
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf",
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf",
 ]);
 
 export function inlineSafe(f: string | null | undefined): boolean {
