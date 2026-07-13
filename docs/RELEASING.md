@@ -37,3 +37,4 @@ reading the newest CHANGELOG entry for highlights — so write that entry for a 
 | v0.12.0 | 467f28c | tag sits on the post-release hardening tip |
 | v0.13.0 | a7db0e3 | tag sits on the final hardened tip |
 | v0.14.0 | 661cbc8 | release commit (feature work merged via PR #9; bump + tag rode a follow-up PR) |
+| v0.15.0 | be5c29a | release commit (feature work merged via PR #11; bump rode its own PR) |
