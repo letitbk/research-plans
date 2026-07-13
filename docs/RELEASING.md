@@ -5,6 +5,7 @@
    - `.claude-plugin/plugin.json`
    - `board/package.json`
    (`.claude-plugin/marketplace.json` no longer carries a version — `plugin.json` is authoritative.)
+   Then sync the lockfile's two copies of the version: `cd board && npm install --package-lock-only`, and commit `board/package-lock.json` with the cut (it lagged at 0.13.0 through two releases before this step existed).
 2. Add a `## [X.Y.Z] - YYYY-MM-DD` entry to `CHANGELOG.md` in Keep-a-Changelog form
    (`### Added / ### Changed / ### Fixed`, user-facing bold-lead bullets).
 3. Commit as `vX.Y.Z: <summary>` (no `Co-Authored-By` trailer).
