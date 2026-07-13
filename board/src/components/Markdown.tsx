@@ -16,6 +16,13 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
 
+// Links: allowlist http/https/mailto/#fragment; javascript:, data:, file:,
+// other schemes, and relative paths (which cannot resolve on the board)
+// render as their inner text — the same "the board never follows a URL the
+// payload didn't provide" contract images obey. Pre-existing hole: marked's
+// default renderer emitted javascript: hrefs into dangerouslySetInnerHTML.
+const SAFE_LINK_RE = /^(https?:|mailto:)/i;
+
 // breaks: true — research plans and reports are written line-oriented
 // (Serves:, Success:, sign-off lines); single newlines must render as breaks.
 // Hard-wrapped paragraphs are soft-unwrapped BEFORE parsing (v0.11), so
@@ -30,6 +37,19 @@ function makeMarked(assets?: Record<string, string>) {
         const t = text.trim();
         if (t.startsWith("<!--")) return "";
         return escapeHtml(text);
+      },
+      link(
+        this: { parser: { parseInline(t: unknown): string } },
+        { href, title, tokens }: { href: string; title?: string | null; tokens: unknown },
+      ) {
+        const inner = this.parser.parseInline(tokens);
+        if (href.startsWith("#")) {
+          return `<a href="${escapeAttr(href)}"${title ? ` title="${escapeAttr(title)}"` : ""}>${inner}</a>`;
+        }
+        if (!SAFE_LINK_RE.test(href)) return inner;
+        return `<a href="${escapeAttr(href)}"${
+          title ? ` title="${escapeAttr(title)}"` : ""
+        } target="_blank" rel="noopener noreferrer">${inner}</a>`;
       },
       // Reports embed figures by repo-relative path; resolve ONLY against the
       // bundle's basename-keyed assets (same contract as artifactDisplay's

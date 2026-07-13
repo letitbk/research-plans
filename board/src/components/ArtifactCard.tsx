@@ -1,8 +1,10 @@
 import type { ResultArtifact, ResultsBundle } from "../lib/types";
 import {
+  anchorProps,
   artifactDisplay,
   resolveScriptSnapshot,
   type ArtifactLink,
+  type ViewerRequest,
 } from "../lib/artifactDisplay";
 import SafeTable from "./SafeTable";
 
@@ -17,12 +19,14 @@ export default function ArtifactCard({
   openScript,
   setOpenScript,
   onZoom,
+  onView,
 }: {
   art: ResultArtifact;
   bundle: ResultsBundle;
   openScript: string | null;
   setOpenScript: (s: string | null) => void;
   onZoom?: (url: string, title: string) => void;
+  onView?: (v: ViewerRequest) => void;
 }) {
   const d = artifactDisplay(art, bundle.assets);
   const scriptFile = resolveScriptSnapshot(art.producedBy, bundle.scripts);
@@ -53,16 +57,33 @@ export default function ArtifactCard({
   const linksRow = (links: ArtifactLink[]) =>
     links.length > 0 ? (
       <div className="mt-1.5 flex flex-wrap gap-3">
-        {links.map((l) => (
-          <a
-            key={l.label}
-            href={l.url}
-            download={l.download}
-            className="text-[11px] font-medium text-blue-700 dark:text-blue-400 underline"
-          >
-            {l.label}
-          </a>
-        ))}
+        {links.map((l) =>
+          l.view && onView ? (
+            <button
+              key={l.label}
+              onClick={() =>
+                onView({
+                  url: l.url,
+                  kind: l.view!,
+                  title: art.title,
+                  basename: l.download ?? l.label,
+                })
+              }
+              className="text-[11px] font-medium text-blue-700 dark:text-blue-400 underline"
+            >
+              {l.label}
+            </button>
+          ) : (
+            <a
+              key={l.label}
+              href={l.url}
+              {...anchorProps(l.url, l.download ?? null)}
+              className="text-[11px] font-medium text-blue-700 dark:text-blue-400 underline"
+            >
+              {l.label}
+            </a>
+          ),
+        )}
       </div>
     ) : null;
 
@@ -98,15 +119,29 @@ export default function ArtifactCard({
         zoomImg(d.url)
       ) : d.mode === "card" ? (
         <>
-          {d.url && (
+          {d.url && d.view && onView ? (
+            <button
+              onClick={() =>
+                onView({
+                  url: d.url!,
+                  kind: d.view!,
+                  title: art.title,
+                  basename: d.basename ?? "",
+                })
+              }
+              className="text-xs font-medium text-blue-700 dark:text-blue-400 underline"
+            >
+              view {d.basename}
+            </button>
+          ) : d.url ? (
             <a
               href={d.url}
-              download={d.basename ?? undefined}
+              {...anchorProps(d.url, d.basename)}
               className="text-xs font-medium text-blue-700 dark:text-blue-400 underline"
             >
               open {d.basename}
             </a>
-          )}
+          ) : null}
           {linksRow(d.links)}
         </>
       ) : (

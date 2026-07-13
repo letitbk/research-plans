@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "../components/Markdown";
 import ArtifactCard from "../components/ArtifactCard";
+import ViewerModal from "../components/ViewerModal";
 import ProvenanceFlow from "../components/ProvenanceFlow";
 import ScriptViewer from "../components/ScriptViewer";
 import AnnotationLayer, {
@@ -9,6 +10,7 @@ import AnnotationLayer, {
 import ReviewMenu from "../components/ReviewMenu";
 import { Notice } from "./Tracker";
 import { parseExecutionPlan, preRenewalSlugs } from "../lib/parse";
+import type { ViewerRequest } from "../lib/artifactDisplay";
 import { actionsVisible } from "../lib/actions";
 import type {
   Annotation,
@@ -217,7 +219,14 @@ export default function Results({
   const [openScript, setOpenScript] = useState<string | null>(null);
   const [verdictComment, setVerdictComment] = useState("");
   const [zoom, setZoom] = useState<{ url: string; title: string } | null>(null);
-  useEffect(() => setOpenScript(null), [bundle?.dir]);
+  const [viewer, setViewer] = useState<{
+    request: ViewerRequest;
+    assets: Record<string, string>;
+  } | null>(null);
+  useEffect(() => {
+    setOpenScript(null);
+    setViewer(null);
+  }, [bundle?.dir]);
   // Apply a click-sync navigation request. When the request also switches the
   // bundle, its script target is stashed and applied AFTER the reset effect
   // above nulls openScript on the bundle change (same-render effect order) —
@@ -548,6 +557,8 @@ export default function Results({
             )
           );
           const onZoom = (url: string, title: string) => setZoom({ url, title });
+          const onView = (v: ViewerRequest) =>
+            setViewer({ request: v, assets: bundle.assets });
           const planFile =
             m && m.planVersion != null
               ? group.versions.find((v) => v.version === m.planVersion)
@@ -628,6 +639,7 @@ export default function Results({
                             openScript={openScript}
                             setOpenScript={setOpenScript}
                             onZoom={onZoom}
+                            onView={onView}
                           />
                         ))}
                       </div>
@@ -673,6 +685,7 @@ export default function Results({
                           openScript={openScript}
                           setOpenScript={setOpenScript}
                           onZoom={onZoom}
+                          onView={onView}
                         />
                       ))}
                     </div>
@@ -755,6 +768,13 @@ export default function Results({
               className="max-h-full max-w-full rounded object-contain"
             />
           </div>
+        )}
+        {viewer && (
+          <ViewerModal
+            request={viewer.request}
+            assets={viewer.assets}
+            onClose={() => setViewer(null)}
+          />
         )}
       </div>
     </div>
