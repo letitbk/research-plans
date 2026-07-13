@@ -7,6 +7,54 @@ export interface ArtifactLink {
   label: string;
   url: string;
   download?: string;
+  view?: ViewKind;
+}
+
+export type ViewKind = "md" | "csv" | "tsv" | "text";
+
+/** What the viewer modal needs to open one artifact file. */
+export interface ViewerRequest {
+  url: string;
+  kind: ViewKind;
+  title: string;
+  basename: string;
+}
+
+const VIEW_KINDS: Record<string, ViewKind> = {
+  ".md": "md", ".csv": "csv", ".tsv": "tsv",
+  ".txt": "text", ".log": "text", ".json": "text", ".tex": "text",
+};
+
+function fileExt(f: string | null | undefined): string {
+  const l = (f ?? "").toLowerCase();
+  const dot = l.lastIndexOf(".");
+  return dot >= 0 ? l.slice(dot) : "";
+}
+
+export function viewKind(f: string | null | undefined): ViewKind | null {
+  return VIEW_KINDS[fileExt(f)] ?? null;
+}
+
+// Mirrors board.py artifact_headers: types the live server serves inline.
+// Active/unknown types (html, xml, xlsx, …) must keep the download attribute
+// — never a same-origin navigation path for active content (codex blocker).
+const INLINE_SAFE_EXTS = new Set([
+  ...Object.keys(VIEW_KINDS),
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf",
+]);
+
+export function inlineSafe(f: string | null | undefined): boolean {
+  return INLINE_SAFE_EXTS.has(fileExt(f));
+}
+
+export function anchorProps(
+  url: string,
+  basename: string | null,
+): { download?: string; target?: string; rel?: string } {
+  if (url.startsWith("data:") || !inlineSafe(basename)) {
+    return { download: basename ?? "" };
+  }
+  return { target: "_blank", rel: "noopener" };
 }
 
 export type ArtifactDisplay =
@@ -14,7 +62,7 @@ export type ArtifactDisplay =
   | { mode: "table-image"; url: string; links: ArtifactLink[] }
   | { mode: "table-inline"; kind: "html" | "md"; links: ArtifactLink[] }
   | { mode: "figure"; url: string }
-  | { mode: "card"; url: string | null; basename: string | null; links: ArtifactLink[] }
+  | { mode: "card"; url: string | null; basename: string | null; links: ArtifactLink[]; view: ViewKind | null }
   | { mode: "missing" };
 
 const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".svg", ".gif"];
@@ -35,11 +83,11 @@ function assetUrl(
 function links(art: ResultArtifact, assets: Record<string, string>): ArtifactLink[] {
   const out: ArtifactLink[] = [];
   const tex = assetUrl(assets, art.tex);
-  if (tex) out.push({ label: ".tex", url: tex, download: art.tex!.split("/").pop() });
+  if (tex) out.push({ label: ".tex", url: tex, download: art.tex!.split("/").pop(), view: "text" });
   const data = assetUrl(assets, art.data);
   if (data) {
     const base = art.data!.split("/").pop()!;
-    out.push({ label: `data: ${base}`, url: data, download: base });
+    out.push({ label: `data: ${base}`, url: data, download: base, view: viewKind(base) ?? undefined });
   }
   return out;
 }
@@ -82,6 +130,7 @@ export function artifactDisplay(
       url,
       basename: art.file ? art.file.split("/").pop()! : null,
       links: l,
+      view: viewKind(art.file),
     };
   }
   return { mode: "missing" };

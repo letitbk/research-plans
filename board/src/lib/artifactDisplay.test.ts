@@ -2,7 +2,7 @@
 // typeset render displays like a figure; CSVs (including legacy inlineText
 // bundles) NEVER inline — they are click-to-open links.
 import { describe, expect, it } from "vitest";
-import { artifactDisplay } from "./artifactDisplay";
+import { anchorProps, artifactDisplay, inlineSafe, viewKind } from "./artifactDisplay";
 import type { ResultArtifact } from "./types";
 
 const SRC = { path: "output/x", sha256: "0".repeat(64), bytes: 10, oversized: false };
@@ -113,5 +113,53 @@ describe("artifactDisplay", () => {
       artifactDisplay(art({ kind: "other", file: "artifacts/table1.csv" }), ASSETS).mode,
     ).toBe("card");
     expect(artifactDisplay(art({}), ASSETS).mode).toBe("missing");
+  });
+});
+
+describe("viewKind (artifact viewer)", () => {
+  it("maps extensions to viewer kinds", () => {
+    expect(viewKind("artifacts/results.md")).toBe("md");
+    expect(viewKind("T.CSV")).toBe("csv");
+    expect(viewKind("t.tsv")).toBe("tsv");
+    for (const f of ["a.txt", "a.log", "a.json", "a.tex"]) expect(viewKind(f)).toBe("text");
+    expect(viewKind("fig.png")).toBeNull();
+    expect(viewKind("page.html")).toBeNull();
+    expect(viewKind("noext")).toBeNull();
+    expect(viewKind(null)).toBeNull();
+  });
+});
+
+describe("inlineSafe / anchorProps (artifact viewer)", () => {
+  it("marks text, raster, svg, pdf as inline-safe; html/xlsx/unknown not", () => {
+    for (const f of ["a.md", "a.csv", "a.png", "a.svg", "a.pdf"]) expect(inlineSafe(f)).toBe(true);
+    for (const f of ["a.html", "a.xlsx", "a.xml", "noext"]) expect(inlineSafe(f)).toBe(false);
+    expect(inlineSafe(null)).toBe(false);
+  });
+  it("live inline-safe URLs open in a new tab without download", () => {
+    expect(anchorProps("/artifact/x/r1/a.pdf", "a.pdf")).toEqual({ target: "_blank", rel: "noopener" });
+  });
+  it("live active/unknown types keep the download attribute", () => {
+    expect(anchorProps("/artifact/x/r1/p.html", "p.html")).toEqual({ download: "p.html" });
+  });
+  it("data: URLs always download (Chrome blocks top-level data: navigation)", () => {
+    expect(anchorProps("data:text/csv;base64,QQ==", "t.csv")).toEqual({ download: "t.csv" });
+  });
+});
+
+describe("view tagging (artifact viewer)", () => {
+  it("card mode carries the main file's view kind", () => {
+    const d = artifactDisplay(art({ kind: "other", file: "artifacts/t.md" }), ASSETS);
+    expect(d).toMatchObject({ mode: "card", view: "md" });
+  });
+  it("links() tags .tex as text and data files by extension", () => {
+    const d = artifactDisplay(
+      art({ kind: "table", file: "artifacts/table1.png", tex: "artifacts/table1.tex", data: "artifacts/table1.csv" }),
+      ASSETS,
+    );
+    expect(d.mode).toBe("table-image");
+    if (d.mode === "table-image") {
+      expect(d.links.find((l) => l.label === ".tex")?.view).toBe("text");
+      expect(d.links.find((l) => l.label.startsWith("data:"))?.view).toBe("csv");
+    }
   });
 });
