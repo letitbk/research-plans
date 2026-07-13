@@ -584,6 +584,31 @@ class TestGenerateOutcomes(unittest.TestCase):
             leftovers = [p.name for p in (root / ".claude" / "agents").iterdir() if p.name.endswith(".tmp")]
             self.assertEqual(leftovers, [])
 
+    def test_generate_reports_error_when_agent_write_fails_without_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_project(tmp)
+            # .claude/agents is a FILE, so the agent mkdir/write fails
+            (root / ".claude").mkdir()
+            (root / ".claude" / "agents").write_text("not a dir")
+            res = models.generate(root)  # must not raise
+            self.assertEqual(res["code"], 0)
+            self.assertTrue(all(r["outcome"] == "error" for r in res["results"]))
+            self.assertFalse(res["restartNeeded"])
+
+
+class TestAtomicWrite(unittest.TestCase):
+    def test_preserves_exact_bytes_including_crlf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "f.md"
+            models.atomic_write(p, "a\r\nb\n")
+            self.assertEqual(p.read_bytes(), b"a\r\nb\n")  # no \n->CRLF translation
+
+    def test_round_trip_default_profile_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "model-profile.md"
+            models.atomic_write(p, DEFAULT_PROFILE)
+            self.assertEqual(p.read_text(encoding="utf-8"), DEFAULT_PROFILE)
+
 
 if __name__ == "__main__":
     unittest.main()

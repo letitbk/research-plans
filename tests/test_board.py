@@ -2870,6 +2870,20 @@ class TestModelProfileWrite(unittest.TestCase):
             self.assertIn("model: haiku",
                           (root / ".claude" / "agents" / "rp-results-validator.md").read_text())
 
+    def test_generation_failure_still_saves_with_error_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); add_profile(root)
+            (root / ".claude").mkdir()
+            (root / ".claude" / "agents").write_text("x")  # blocks agent regeneration
+            url, info, t = serve_in_thread(root)
+            bh = self._baseline(url)
+            status, body, _ = self._save(url, info["boardToken"], bh,
+                                         profile_rows(**{"plan-review": ("sonnet", "medium")}))
+            self.assertEqual(status, 200)          # handler did NOT crash
+            self.assertTrue(body["saved"])
+            self.assertIn("error", body["generation"])
+            self.assertIn("sonnet", (root / "plans" / "model-profile.md").read_text())
+
     def test_route_disabled_in_gate_mode(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root); add_profile(root)

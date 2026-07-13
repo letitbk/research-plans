@@ -634,11 +634,20 @@ def apply_model_profile(root, body):
     except OSError as e:
         return 500, {"error": "write-failed", "detail": str(e)}
 
-    # 7. Regenerate agents. A generation failure here does NOT unwind the saved
-    #    profile — report it as saved with a generation error.
-    gen = models.generate(root)
+    # 7. Regenerate agents. The profile is already saved, so a generation
+    #    failure is reported as saved-with-a-generation-error, never unwound and
+    #    never allowed to crash the handler (which would drop the connection and
+    #    hide the error from the client).
+    try:
+        gen = models.generate(root)
+    except Exception as e:  # pragma: no cover - generate() catches its own I/O
+        return 200, {"ok": True, "saved": True,
+                     "modelProfile": collect_model_profile(root, "live"),
+                     "restartNeeded": False, "changedAgentStages": [],
+                     "generation": {"results": [], "error": str(e)}}
     generation = {"results": gen["results"]}
-    if gen["code"] != 0:
+    errored = any(r["outcome"] == "error" for r in gen["results"])
+    if gen["code"] != 0 or errored:
         generation["error"] = "; ".join(gen["stderr"]) or "agent regeneration failed"
     return 200, {
         "ok": True,

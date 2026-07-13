@@ -90,6 +90,9 @@ export default function Models({
 }) {
   const live = data.mode === "live";
   const canEdit = actionsVisible(data) && modelProfile?.editable === true;
+  // Creating a profile hits the same /api/model-profile route, which the server
+  // disables during a sign-off gate — so gate it on actionsVisible, not `live`.
+  const canCreate = actionsVisible(data);
 
   const [draft, setDraft] = useState<DraftRow[]>(() => toDraft(modelProfile?.rows ?? []));
   const [saving, setSaving] = useState(false);
@@ -100,8 +103,11 @@ export default function Models({
   // edits (which don't change the hash) are never clobbered.
   const baseHash = modelProfile?.baselineHash ?? null;
   useEffect(() => {
+    // Reset the draft when the authoritative snapshot changes. Do NOT clear
+    // `feedback` here: a save changes baseHash via onProfileChange, and clearing
+    // it would immediately wipe the restart / generation-error / stale banner
+    // this same save just set.
     setDraft(toDraft(modelProfile?.rows ?? []));
-    setFeedback(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseHash]);
 
@@ -173,8 +179,10 @@ export default function Models({
           refused,
           genError: result.generation?.error,
         });
-      } else if (res.status === 409 && json.modelProfile) {
-        onProfileChange(json.modelProfile);
+      } else if (res.status === 409) {
+        // Rebase to fresh disk state — or to the empty state if the file was
+        // deleted out from under us (modelProfile null).
+        onProfileChange(json.modelProfile ?? undefined);
         setFeedback({ kind: "stale" });
       } else {
         setFeedback({ kind: "error", message: errorMessage(res.status, json) });
@@ -203,7 +211,7 @@ export default function Models({
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
         <Header />
-        {live ? (
+        {canCreate ? (
           <div className="rounded-lg border border-dashed border-stone-300 dark:border-stone-700 p-6 text-center">
             <p className="mb-3 text-sm text-stone-600 dark:text-stone-400">
               No model profile yet — every stage runs on your session model.

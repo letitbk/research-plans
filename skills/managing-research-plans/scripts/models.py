@@ -299,7 +299,10 @@ def atomic_write(target, text):
     mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
     fd, tmpname = tempfile.mkstemp(dir=str(target.parent), prefix=target.name + ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        # newline="" disables translation: the text already carries the exact
+        # line endings we want (the byte-splice preserves the source's), so a
+        # text-mode \n->\r\n rewrite on Windows would double CRLF into CRCRLF.
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
         os.chmod(tmpname, mode)
         os.replace(tmpname, target)
@@ -394,10 +397,15 @@ def generate(root):
                 stdout.append(f"refused (user-owned, no marker): {rel}")
                 results.append({"agent": agent, "stage": key, "outcome": "refused-user"})
                 continue
-        template = (_templates_dir() / f"{agent}.md").read_text(encoding="utf-8")
-        rendered = _render(template, row["model"], row["effort"], checksum)
-        agents_dir.mkdir(parents=True, exist_ok=True)
-        atomic_write(target, rendered)
+        try:
+            template = (_templates_dir() / f"{agent}.md").read_text(encoding="utf-8")
+            rendered = _render(template, row["model"], row["effort"], checksum)
+            agents_dir.mkdir(parents=True, exist_ok=True)
+            atomic_write(target, rendered)
+        except (OSError, UnicodeDecodeError) as e:
+            stderr.append(f"model-profile: could not write {rel} ({e})")
+            results.append({"agent": agent, "stage": key, "outcome": "error"})
+            continue
         stdout.append(f"wrote {rel}")
         wrote_any = True
         if old is None:

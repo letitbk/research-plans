@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Models from "./Models";
@@ -185,5 +186,40 @@ describe("Models view (editing, live)", () => {
     fireEvent.click(await screen.findByText("Create from defaults"));
     await waitFor(() => expect(postBody).toBeTruthy());
     expect(postBody!.create).toBe(true);
+  });
+
+  // A stateful parent so onProfileChange actually re-renders Models with the
+  // returned profile — this is what exposes the feedback-suppression bug that
+  // a plain vi.fn() callback hides.
+  function Harness({ initial }: { initial?: ModelProfile }) {
+    const [mp, setMp] = useState<ModelProfile | undefined>(initial);
+    return <Models data={base("live")} modelProfile={mp} onProfileChange={setMp} />;
+  }
+
+  it("keeps the restart banner after the parent re-renders with the saved profile", async () => {
+    // A different baselineHash forces the draft-reset effect to run.
+    postResponse = savedResponse({ modelProfile: { ...PROFILE, baselineHash: "b".repeat(64) } });
+    render(<Harness initial={PROFILE} />);
+    await waitFor(() => expect(selects().length).toBe(12));
+    fireEvent.change(selects()[6], { target: { value: "sonnet" } });
+    fireEvent.click(saveBtn());
+    await screen.findByText(/Restart your Claude Code session/);
+    expect(screen.getByText(/Restart your Claude Code session/)).toBeTruthy();
+  });
+
+  it("a 409 with a deleted profile switches to the empty state", async () => {
+    postResponse = { status: 409, json: { error: "stale", modelProfile: null } };
+    render(<Harness initial={PROFILE} />);
+    await waitFor(() => expect(selects().length).toBe(12));
+    fireEvent.change(selects()[6], { target: { value: "sonnet" } });
+    fireEvent.click(saveBtn());
+    await screen.findByText("Create from defaults");
+  });
+
+  it("hides Create from defaults during a sign-off gate", () => {
+    const data: BoardData = { ...base("live"), gate: { component: "x", proposedVersion: 1 } };
+    render(<Models data={data} modelProfile={undefined} onProfileChange={noop} />);
+    expect(screen.queryByText("Create from defaults")).toBeNull();
+    expect(screen.getByText(/No model profile is configured/)).toBeTruthy();
   });
 });
