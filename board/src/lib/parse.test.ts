@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AGENT_SECTIONS,
-  HUMAN_SECTIONS,
+  CONTRACT_SECTIONS,
+  METHOD_SECTIONS,
   allFiles,
   parseDecisionLog,
   parseExecutionPlan,
@@ -122,37 +122,35 @@ describe("decision log parsing", () => {
 });
 
 describe("execution plan parsing (contract: current template)", () => {
-  it("parses the literal template with all eight sections, Goal first", () => {
+  it("parses the single-narrative template, Context first", () => {
     const ep = parseExecutionPlan(read(join(TEMPLATES, "execution-plan.md")));
     expect(ep.ok).toBe(true);
     expect(ep.sections.map((s) => s.heading)).toEqual([
-      "Goal and success criteria",
       "Context",
-      "Scope decisions",
+      "Goal and success criteria",
+      "Decisions",
       "Approach",
       "Build steps",
       "Verification",
       "Out of scope",
       "Files to reuse",
+      "Sources",
     ]);
     expect(ep.goal).not.toBeNull();
     expect(ep.serves).toContain("RQ");
   });
 
-  it("keeps all eight sections when the human/agent Part banners are present", () => {
+  it("is one narrative with no Part 1/Part 2 banners", () => {
     const raw = read(join(TEMPLATES, "execution-plan.md"));
-    expect(raw).toContain("## Part 1 — For humans");
-    expect(raw).toContain("## Part 2 — For agents");
+    expect(raw).not.toContain("## Part 1");
+    expect(raw).not.toContain("## Part 2");
     const ep = parseExecutionPlan(raw);
     expect(ep.ok).toBe(true);
-    // Part banners are not counted as content sections.
-    const headings = ep.sections.map((s) => s.heading);
-    expect(headings).not.toContain("Part 1 — For humans (the what & why)");
-    expect(headings.length).toBe(8);
-    // The human/agent partition classifies exactly the eight sections.
-    expect([...HUMAN_SECTIONS, ...AGENT_SECTIONS].slice().sort()).toEqual(
-      headings.slice().sort(),
-    );
+    // Every section is classified into a detail-level tier (contract or method).
+    const tiers = [...CONTRACT_SECTIONS, ...METHOD_SECTIONS];
+    for (const h of ep.sections.map((s) => s.heading)) {
+      expect(tiers).toContain(h);
+    }
   });
 
   it("parses goal, serves, version, supersedes, sign-off from dev-data v2", () => {
@@ -234,6 +232,42 @@ describe("scorecard parsing", () => {
   it("parses the scorecard template's fence shape without throwing", () => {
     const tpl = read(join(TEMPLATES, "review-scorecard.md"));
     expect(() => parseScorecard(tpl)).not.toThrow();
+  });
+
+  const V3 = (over = "") =>
+    '```json board-scorecard\n{"schemaVersion":3,"status":"scored","component":"03-x","planVersion":1,"planPath":"plans/execution/03-x/v1.md","rubricVersion":"0.4","date":"2026-07-14","channels":[{"id":"goal","score":3},{"id":"decisions","score":2},{"id":"steps","score":2},{"id":"validation","score":1},{"id":"boundaries","score":0}],"total":8,"max":15,"profile":"G3·D2·S2·V1·B0"' +
+    over +
+    "}\n```";
+
+  it("parses a v3 scored scorecard with the five channels", () => {
+    const sc = parseScorecard(V3());
+    expect(sc).not.toBeNull();
+    expect(sc!.status).toBe("scored");
+    expect(sc!.channels!.map((c) => c.id)).toEqual([
+      "goal",
+      "decisions",
+      "steps",
+      "validation",
+      "boundaries",
+    ]);
+    expect(sc!.total).toBe(8);
+  });
+
+  it("parses a v3 unscorable scorecard", () => {
+    const raw =
+      '```json board-scorecard\n{"schemaVersion":3,"status":"unscorable","component":"03-x","planVersion":1,"planPath":"p","rubricVersion":"0.4","date":"2026-07-14","reason":"no extractable goal"}\n```';
+    const sc = parseScorecard(raw);
+    expect(sc!.status).toBe("unscorable");
+    expect(sc!.reason).toContain("goal");
+  });
+
+  it("rejects a v3 scored card that is missing a channel or has an out-of-range score", () => {
+    const missing =
+      '```json board-scorecard\n{"schemaVersion":3,"status":"scored","component":"x","planVersion":1,"planPath":"p","rubricVersion":"0.4","date":"d","channels":[{"id":"goal","score":3},{"id":"decisions","score":2},{"id":"steps","score":2},{"id":"validation","score":1}]}\n```';
+    expect(parseScorecard(missing)).toBeNull();
+    const badScore =
+      '```json board-scorecard\n{"schemaVersion":3,"status":"scored","component":"x","planVersion":1,"planPath":"p","rubricVersion":"0.4","date":"d","channels":[{"id":"goal","score":4},{"id":"decisions","score":2},{"id":"steps","score":2},{"id":"validation","score":1},{"id":"boundaries","score":0}]}\n```';
+    expect(parseScorecard(badScore)).toBeNull();
   });
 });
 
