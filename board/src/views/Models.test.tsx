@@ -80,6 +80,15 @@ describe("Models view (read-only)", () => {
     render(<Models data={base("static")} modelProfile={undefined} onProfileChange={noop} />);
     expect(screen.getByText(/No model profile is configured/)).toBeTruthy();
   });
+
+  it("does not render a duplicate title when the prose opens with its own H1", () => {
+    const mp: ModelProfile = { ...PROFILE, proseBefore: "# Model profile\n\nHow each stage picks a model." };
+    render(<Models data={base("static")} modelProfile={mp} onProfileChange={noop} />);
+    // exactly one "Model profile" heading (the view's Header), not two
+    const headings = screen.getAllByRole("heading", { name: "Model profile" });
+    expect(headings.length).toBe(1);
+    expect(screen.getByText("How each stage picks a model.")).toBeTruthy();
+  });
 });
 
 describe("Models view (editing, live)", () => {

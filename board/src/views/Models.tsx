@@ -51,6 +51,13 @@ function prettyStage(key: string): string {
   return key.replace(/-/g, " ");
 }
 
+// The profile file opens with its own `# Model profile` H1; the view already
+// renders a Header, so drop a leading top-level heading from the prose to avoid
+// a duplicate title. Display-only — never touches the saved bytes.
+function stripLeadingH1(md: string): string {
+  return md.replace(/^\s*#\s+.*(?:\r?\n|$)/, "");
+}
+
 function MechChip({ mechanism }: { mechanism: "nudge" | "agent" }) {
   const cls =
     mechanism === "agent"
@@ -239,8 +246,8 @@ export default function Models({
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Header />
-      {modelProfile.proseBefore.trim() && (
-        <Markdown source={modelProfile.proseBefore} className="mb-4 text-sm" />
+      {stripLeadingH1(modelProfile.proseBefore).trim() && (
+        <Markdown source={stripLeadingH1(modelProfile.proseBefore)} className="mb-4 text-sm" />
       )}
 
       {modelProfile.agentsGitignored === true && (
