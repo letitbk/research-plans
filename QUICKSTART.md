@@ -1,6 +1,6 @@
 # Quickstart
 
-This is the short path from install to your first plan-execute-sync loop. It assumes Claude Code is installed and you have a research project (new or ongoing) in a folder, ideally a git repository.
+This is the short path from install to your first plan-execute-sync loop. It assumes Claude Code is installed and you have a research project (new or ongoing) in a folder, ideally a git repository. For what the plugin is and why you'd use it, see the [README](README.md); for the full reference on every command and the board, see [docs/reference.md](docs/reference.md).
 
 ## 1. Install the plugin
 
@@ -21,7 +21,7 @@ Open Claude Code in your project folder and run:
 /research-plans:init
 ```
 
-Claude will ask a few questions, starting with your research questions (they become a numbered list in the master plan), then data and constraints. It derives the components from your research design, with each one naming the questions it serves, and looks at what already exists in the folder only to set honest statuses. Adopting mid-project is fine: work you have already done gets marked `done` or `in progress`, and nothing is invented about the past. You can also run init mid-session, after an hour of exploring with Claude: what the session established goes into the plan's context and reasons, and the decision log starts at init, never backfilled. Then it creates `plans/master-plan.md`, `plans/decision-log.md`, and a marked section in your `CLAUDE.md`. Commit when it looks right.
+Claude will ask a few questions, starting with your research questions (they become a numbered list in the master plan), then data and constraints. It derives the components from your research design, with each one naming the questions it serves, and looks at what already exists in the folder only to set honest statuses. Adopting mid-project is fine: work you have already done gets marked `done` or `in progress`, and nothing is invented about the past. You can also run init mid-session, after an hour of exploring with Claude: what the session established goes into the plan's context and reasons, and the decision log starts at init, never backfilled. It also asks whether to use the recommended per-stage model profile — a strong model for planning, a fast one for execution, a smart one for review — or set your own. Then it creates `plans/master-plan.md`, `plans/decision-log.md`, `plans/model-profile.md`, and a marked section in your `CLAUDE.md`. Commit when it looks right.
 
 ## 3. Plan your first component
 
@@ -51,7 +51,7 @@ When a component's analysis has run, capture what it produced:
 /research-plans:results data cleaning
 ```
 
-Claude proposes the artifacts (figures, tables, key numbers) it can trace to the work, you confirm titles and captions, and it writes an immutable bundle at `plans/execution/<component>/results/r1/` — a brief report, snapshot copies of the files, and the exact scripts that produced them. Then open the board on it: the Results view shows the report, the numbers as tiles, the figure/table gallery, and a click-through to each producing script; the Reports view renders generated reports with version chips. Press **Accept** and the verdict is recorded in the decision log and the tracker flips to `done (verified)`; press **Request changes** with comments and Claude fixes the scripts, re-runs, and captures `r2` — `r1` stays exactly as you reviewed it.
+Claude proposes the artifacts (figures, tables, key numbers) it can trace to the work, you confirm titles and captions, and it writes an immutable bundle at `plans/execution/<component>/results/r1/` — a brief report, snapshot copies of the files, the exact scripts that produced them, and two automatic advisory checks: a **validation** that compares your signed plan against what actually ran, and a mechanical **integrity** check (do the artifact checksums match, is every finding backed by an artifact). Then open the board on it: the Results view shows the validation and integrity results, the numbers as tiles, the figure/table gallery, and a click-through to each producing script; the narrative report lives on the Reports view with version chips (a bundle with nothing substantive to report gets no report). Press **Accept** and the verdict is recorded in the decision log and the tracker flips to `done (verified)`; press **Request changes** with comments and Claude fixes the scripts, re-runs, and captures `r2` — `r1` stays exactly as you reviewed it.
 
 Started using the plugin mid-project? `/research-plans:results --adopt` scans your output folders and brings existing figures and tables under verification, marked `retrofit`.
 
@@ -69,7 +69,7 @@ The review runs in two stages. First a threshold: is this a plan at all? Nine pa
 /research-plans:board
 ```
 
-This opens a dashboard in your browser: the tracker as a status board, every plan version with diffs, the decision log as a timeline, generated reports with version chips, and saved review scorecards. It is also where reviewing a plan feels best: select any text to attach a comment, add general comments on any view, then press "Send to Claude". Your comments come back to the session, where Claude walks through them with you, proposes plan revisions where you approved changes, and records the exchange in the decision log. Don't want to write the feedback yourself? Press **Review with** (on a plan, the master plan, or a results bundle) and Codex, Gemini, or a Claude subagent produces the section-anchored comments for you — they land on the board as pending annotations you curate, then route exactly like your own.
+This opens a dashboard in your browser: the tracker as a status board, every plan version with diffs, the decision log as a timeline, generated reports with version chips, saved review scorecards, and a Models tab where you can see and adjust which model runs each stage. It is also where reviewing a plan feels best: select any text to attach a comment, add general comments on any view, then press "Send to Claude". Your comments come back to the session, where Claude walks through them with you, proposes plan revisions where you approved changes, and records the exchange in the decision log. Don't want to write the feedback yourself? Press **Review with** (on a plan, the master plan, or a results bundle) and Codex, Gemini, or a Claude subagent produces the section-anchored comments for you — they land on the board as pending annotations you curate, then route exactly like your own.
 
 To share the project state with someone who does not use Claude Code:
 
@@ -79,7 +79,7 @@ To share the project state with someone who does not use Claude Code:
 
 This writes `plans/board.html`, one self-contained file that opens in any browser, offline, read-only (result figures are embedded). One caution, same as committing plans: the file contains everything under `plans/` — including result figures, tables, and script snapshots — so sharing it is publishing your plans and results.
 
-To get feedback from a collaborator who does not use Claude Code, `/research-plans:board --share` emails just as easily — they annotate in their browser and send back a feedback file that `/research-plans:board --collect <file>` routes into your session with attribution.
+To get feedback from a collaborator who does not use Claude Code, `/research-plans:board --share` emails just as easily — they annotate in their browser and send back a feedback file that `/research-plans:board --collect <file>` routes into your session with attribution. For a collaborator to read and comment from their own browser without any file exchange, `/research-plans:board --publish-web` publishes to a private, password-protected link — a one-time setup of about 20 minutes, walked through in [docs/hosting-the-board.md](docs/hosting-the-board.md).
 
 ## FAQ
 
@@ -88,6 +88,8 @@ To get feedback from a collaborator who does not use Claude Code, `/research-pla
 **I already did half the work before adopting this.** Mid-session and mid-project adoption is supported: prior work informs the plan (context, research questions, statuses, scope reasons), never the decision log. The log starts at initialization and is never backfilled. For substantial already-done work, `/research-plans:adopt` goes further — it decomposes the work into components, drafts a full **retrospective** plan for each (honestly labeled, reviewed together in one board batch), and reconstructs the pre-adoption decisions into `plans/history.md`, kept out of the real-time log. And when the point of starting the workflow is to take the existing exploration in a NEW direction — a new target, new questions — use `/research-plans:renew` instead: it writes a fresh master plan for the new direction (archiving the old one if the project was initialized), keeps your accomplishments as carried components, and leaves adopt for the pieces you want retro-planned.
 
 **I use Claude Code's plan mode.** Fine. If a plan gets approved through plan mode, Claude copies it into the component's next version slot so the repository record stays complete.
+
+**Which model runs each step?** A per-project profile (`plans/model-profile.md`, written at init) maps each stage to a model: a strong one where planning quality compounds, a fast cheap one for interactive execution, a smart one for short review and validation judgments. Interactive stages just *nudge* you to switch model (you decide; switching mid-conversation is safe); delegated stages like review and validation run in generated `rp-*` agents pinned to the profile. Edit it any time with `/research-plans:models` or inline on the board's Models tab. Projects without a profile behave exactly as before.
 
 **My project is small.** Use fewer, larger components, and let the Scope decisions be a short list instead of a table. If maintaining the structure feels like more work than the project, that is real feedback; please report it.
 
