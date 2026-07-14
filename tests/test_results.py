@@ -17,6 +17,8 @@ RESULTS = SCRIPTS / "results.py"
 sys.path.insert(0, str(SCRIPTS))
 import results  # noqa: E402
 
+DEFAULT_PROFILE = (SCRIPTS.parent / "templates" / "model-profile.md").read_text(encoding="utf-8")
+
 
 def make_project(root: Path):
     plans = root / "plans"
@@ -448,6 +450,47 @@ class TestValidationBlock(unittest.TestCase):
             staging = self._staged(root, None, False)
             p = run_cli(root, "finalize", "--staging", str(staging))
             self.assertEqual(p.returncode, 0, p.stderr)
+
+
+class TestFinalizeProvenance(unittest.TestCase):
+    def _stage_and_finalize(self, root, *extra, profile=True):
+        if profile:
+            (root / "plans" / "model-profile.md").write_text(DEFAULT_PROFILE, encoding="utf-8")
+        p = run_cli(root, "stage", "--component", "02-analysis")
+        staging = Path(p.stdout.strip())
+        (staging / "manifest.json").write_text(json.dumps(manifest_for(staging)), encoding="utf-8")
+        (staging / "report.md").write_text("# Report\n", encoding="utf-8")
+        p2 = run_cli(root, "finalize", "--staging", str(staging), *extra)
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        r1 = root / "plans" / "execution" / "02-analysis" / "results" / "r1"
+        return json.loads((r1 / "manifest.json").read_text())
+
+    def test_prescribed_from_execute_stage_and_reported_from_arg(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            m = self._stage_and_finalize(root, "--reported-model", "claude-opus-4-8")
+            self.assertEqual(m["modelUsage"]["prescribed"], {"model": "sonnet", "effort": None})
+            self.assertEqual(m["modelUsage"]["reported"], {"model": "claude-opus-4-8", "effort": None})
+
+    def test_prescribed_only_when_no_reported_arg(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            m = self._stage_and_finalize(root)
+            self.assertEqual(m["modelUsage"]["prescribed"], {"model": "sonnet", "effort": None})
+            self.assertIsNone(m["modelUsage"]["reported"])
+
+    def test_no_modelusage_when_no_profile(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            m = self._stage_and_finalize(root, profile=False)
+            self.assertNotIn("modelUsage", m)
+
+    def test_reported_only_when_no_profile_but_arg_given(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root)
+            m = self._stage_and_finalize(root, "--reported-model", "sonnet", profile=False)
+            self.assertIsNone(m["modelUsage"]["prescribed"])
+            self.assertEqual(m["modelUsage"]["reported"], {"model": "sonnet", "effort": None})
 
 
 if __name__ == "__main__":

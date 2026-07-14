@@ -27,6 +27,9 @@ import sys
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import models  # noqa: E402  (prescribed model lookup for result provenance)
+
 MAX_BYTES = 5 * 1024 * 1024
 SCAN_DIRS = ["output", "outputs", "figures", "figs", "plots", "viz", "visuals",
              "graphics", "tables", "results", "reports"]
@@ -248,6 +251,24 @@ def cmd_finalize(root, args):
     version = next_version(results_dir)
     manifest["resultsVersion"] = version
     manifest.setdefault("schemaVersion", 1)
+    # Model provenance (which model captured this bundle). prescribed = the
+    # profile's execute stage; reported = the session that ran /results (passed
+    # via --reported-model — a self-attestation, not verified). Either may be
+    # absent; never fabricate the reported side.
+    prescribed = None
+    try:
+        stages, _, exists = models.load_profile(root)
+        row = stages.get("execute") if exists else None
+        if row:
+            prescribed = {"model": row["model"], "effort": row["effort"]}
+    except Exception:
+        prescribed = None
+    reported = None
+    rm = getattr(args, "reported_model", None)
+    if rm and rm.strip():
+        reported = {"model": rm.strip(), "effort": None}
+    if prescribed or reported:
+        manifest["modelUsage"] = {"prescribed": prescribed, "reported": reported}
     (staging / "manifest.json").write_text(
         json.dumps(manifest, indent=1), encoding="utf-8")
     target = results_dir / ("r%d" % version)
@@ -335,6 +356,8 @@ def main():
     c.add_argument("sources", nargs="+")
     f = sub.add_parser("finalize")
     f.add_argument("--staging", required=True)
+    f.add_argument("--reported-model", default=None,
+                   help="model id the /results session ran on (provenance; self-attested)")
     v = sub.add_parser("verdict")
     v.add_argument("--component", required=True)
     v.add_argument("--version", type=int, required=True)
