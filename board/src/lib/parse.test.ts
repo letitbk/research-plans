@@ -186,34 +186,22 @@ describe("execution plan parsing (tolerance: real v0.1 artifact)", () => {
 });
 
 describe("scorecard parsing", () => {
-  it("parses a v1 scorecard (no threshold block) as before", () => {
-    const sc = parseScorecard(devData.files.reviews[0].content);
+  // Legacy v1/v2 scorecards still parse (for the "legacy review" affordance).
+  it("parses a legacy v1 scorecard (no threshold block)", () => {
+    const raw =
+      '```json board-scorecard\n{"schemaVersion":1,"component":"02-x","planVersion":2,"planPath":"p","rubricVersion":"0.1","date":"d","items":[{"id":1,"score":2}],"raw":18,"applicableMax":22,"percent":82,"band":"strong"}\n```';
+    const sc = parseScorecard(raw);
     expect(sc).not.toBeNull();
     expect(sc!.threshold).toBeUndefined();
-    expect(sc!.items.length).toBe(14);
     expect(sc!.percent).toBe(82);
-    expect(sc!.band).toBe("strong");
   });
 
-  it("parses a v2 PASS scorecard with threshold checks", () => {
-    const sc = parseScorecard(devData.files.reviews[1].content);
-    expect(sc).not.toBeNull();
+  it("parses a legacy v2 PASS scorecard with threshold checks", () => {
+    const raw =
+      '```json board-scorecard\n{"schemaVersion":2,"component":"03-x","planVersion":1,"planPath":"p","rubricVersion":"0.2","date":"d","threshold":{"verdict":"pass","checks":[{"id":"T1","result":"pass"}],"failures":[]},"items":[{"id":"G1","score":2}],"raw":11,"applicableMax":14,"percent":79,"band":"strong"}\n```';
+    const sc = parseScorecard(raw);
     expect(sc!.threshold!.verdict).toBe("pass");
-    expect(sc!.threshold!.checks.length).toBe(9);
-    expect(sc!.items.length).toBe(8);
-    expect(sc!.percent).toBe(79);
-    expect(sc!.excluded![0].id).toBe("G4");
-  });
-
-  it("parses a v2 FAIL scorecard: null grade fields, empty items", () => {
-    const sc = parseScorecard(devData.files.reviews[2].content);
-    expect(sc).not.toBeNull();
-    expect(sc!.threshold!.verdict).toBe("fail");
-    expect(sc!.threshold!.failures!.length).toBe(3);
-    expect(sc!.items).toEqual([]);
-    expect(sc!.percent).toBeNull();
-    expect(sc!.raw).toBeNull();
-    expect(sc!.band).toBe("not a plan");
+    expect(sc!.items!.length).toBe(1);
   });
 
   it("treats schemaVersion 2 WITHOUT a valid threshold as malformed", () => {

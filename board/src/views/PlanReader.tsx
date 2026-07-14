@@ -8,6 +8,7 @@ import {
 } from "react";
 import Markdown from "../components/Markdown";
 import ModelChip from "../components/ModelChip";
+import ScorePanel from "../components/ScorePanel";
 import { parsePlanModelMarker } from "../lib/modelUsage";
 import DiffView from "../components/DiffView";
 import AnnotationLayer from "../components/AnnotationLayer";
@@ -17,6 +18,7 @@ import {
   AGENT_SECTIONS,
   parseExecutionPlan,
   parseMasterPlan,
+  parseScorecard,
   parseServes,
   preRenewalSlugs,
 } from "../lib/parse";
@@ -231,6 +233,18 @@ export default function PlanReader({
     [annotations, doc],
   );
 
+  // The five-channel score for THIS version, matched by the scorecard's
+  // authoritative planPath and only for a signed version (a draft/snapshot never
+  // carries a score). A duplicate match is treated as ambiguous — show nothing
+  // rather than a possibly-wrong score.
+  const scorecard = useMemo(() => {
+    if (!doc || doc.docKind !== "signed") return null;
+    const matches = data.files.reviews
+      .map((r) => parseScorecard(r.content))
+      .filter((sc) => sc && sc.planPath === doc.path);
+    return matches.length === 1 ? matches[0] : null;
+  }, [doc, data.files.reviews]);
+
   if (!group || !doc) {
     return (
       <div className="rounded-lg border border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-10 text-center text-sm text-stone-500">
@@ -337,6 +351,7 @@ export default function PlanReader({
             ),
           )}
           <div className="ml-auto flex items-center gap-2">
+            {scorecard && <ScorePanel scorecard={scorecard} />}
             {actionsVisible(data) && onSignoff && doc.docKind === "workingDraft" && group && (() => {
               const st = planActionState(data, group.component, annotations);
               if (st.kind !== "approve") return null;
