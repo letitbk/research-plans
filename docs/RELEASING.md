@@ -40,3 +40,4 @@ reading the newest CHANGELOG entry for highlights — so write that entry for a 
 | v0.14.0 | 661cbc8 | release commit (feature work merged via PR #9; bump + tag rode a follow-up PR) |
 | v0.15.0 | be5c29a | release commit (feature work merged via PR #11; bump rode its own PR) |
 | v0.16.0 | a425c47 | release commit (feature work merged via PRs #13/#14; bump rode its own PR) |
+| v0.17.0 | 3a6c204 | release commit (PR #16 Models tab + provenance combined with PR #17 result/report separation; both folded into PR #16, bump on the same branch) |

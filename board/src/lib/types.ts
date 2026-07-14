@@ -21,6 +21,7 @@ export interface BoardData {
   boardToken?: string; // live: per-boot token required on mutating routes
   gate?: { component: string; proposedVersion: number }; // sign-off gate mode
   gateBatch?: GateBatchEntry[]; // batch sign-off wizard (one plan at a time)
+  modelProfile?: ModelProfile; // per-stage model profile (Models tab); present-only
   project: { name: string; root?: string };
   git: {
     available: boolean;
@@ -42,6 +43,66 @@ export interface BoardData {
 export interface BoardFile {
   path: string;
   content: string;
+}
+
+// ---- model profile (Models tab) ----
+
+// One row of plans/model-profile.md as the board sees it. `label` is the
+// verbatim display text (e.g. "plan (co-authoring)"); `mechanism` is read-only
+// on the board; `effort` is null when unset (renders as "—").
+export interface ModelProfileRow {
+  stage: string; // canonical key: plan | execute | sync | plan-review | results-validation | board-reviewer
+  label: string;
+  model: string; // inherit | opus | sonnet | haiku | fable | claude-* id
+  effort: string | null; // low | medium | high | xhigh | max | null
+  mechanism: "nudge" | "agent";
+}
+
+// Server-built snapshot of the profile. `baselineHash` is echoed back on Save
+// for optimistic concurrency; `editable` is false for a hand-edited /
+// non-canonical / unreadable file (edit those via /research-plans:models).
+export interface ModelProfile {
+  path: string;
+  exists: boolean;
+  baselineHash: string | null;
+  raw: string;
+  proseBefore: string; // markdown above the table (explanation)
+  proseAfter: string; // markdown below the table (defaults rationale)
+  rows: ModelProfileRow[];
+  editable: boolean;
+  warnings: string[];
+  agentsGitignored: boolean | null; // null when git unavailable / collaborator mode
+}
+
+// ---- model provenance (which model each part used) ----
+
+// One side of a provenance record. `effort` is null when unknown (reported
+// effort is generally not introspectable) or unset.
+export interface ModelSide {
+  model: string;
+  effort: string | null;
+}
+
+// Attached to a plan version, result bundle, report, or scorecard/validation.
+// `prescribed` = what the profile assigned to the governing stage (reliable);
+// `reported` = what the capturing session/agent self-attested (best-effort,
+// NEVER presented as verified runtime truth). Either may be null.
+export interface ModelUsage {
+  prescribed: ModelSide | null;
+  reported: ModelSide | null;
+}
+
+// Result of a successful POST /api/model-profile (patched into App state).
+export interface ModelProfileSaveResult {
+  ok: true;
+  saved: true;
+  modelProfile: ModelProfile;
+  restartNeeded: boolean;
+  changedAgentStages: string[];
+  generation: {
+    results: { agent: string; stage: string; outcome: string }[];
+    error?: string;
+  };
 }
 
 // An archived master plan under plans/archive/ — immutable renewal record.
@@ -105,6 +166,21 @@ export interface ResultsManifest {
   }[];
   artifacts: ResultArtifact[];
   validation?: ValidationBlock; // v0.10: plan-vs-execution audit, sealed at capture
+  modelUsage?: ModelUsage; // which model captured this bundle (reported = capture session)
+  integrity?: IntegrityBlock; // mechanical integrity pass, sealed at finalize
+}
+
+// Mechanical, advisory integrity pass computed by results.py at finalize and
+// sealed into the immutable manifest. Absent on bundles captured before this
+// feature. Never a gate — a "failed" status is surfaced, not enforced.
+export interface IntegrityBlock {
+  status: "passed" | "failed";
+  checkedAt?: string;
+  checks: {
+    name: string; // checksums | artifacts-present | artifact-refs | findings-sourced
+    verdict: "pass" | "fail";
+    detail?: string;
+  }[];
 }
 
 // Independent-subagent audit of the bundle against its signed plan (v0.10).
@@ -137,6 +213,7 @@ export interface ValidationBlock {
   }[];
   notes?: string;
   reason?: string; // for not-applicable / skipped / unverifiable
+  modelUsage?: ModelUsage; // which model validated (reported = validator agent or session)
 }
 
 export interface ResultArtifact {
@@ -278,6 +355,7 @@ export interface Scorecard {
   excluded?: { id: number | string; why: string }[];
   topRevisions?: string[];
   split?: { verdict: string; detail: string };
+  modelUsage?: ModelUsage; // which model reviewed (reported = review agent or session)
 }
 
 export interface ScorecardThreshold {
