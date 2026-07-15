@@ -1163,6 +1163,7 @@ export default function App({ data }: { data: BoardData }) {
               data.files.archives?.length ? () => setTab("archive") : undefined
             }
             onOpenReport={openReport}
+            onOutline={setOutline}
           />
         )}
         {tab === "plans" && (
@@ -1224,6 +1225,7 @@ export default function App({ data }: { data: BoardData }) {
               setTab("results");
             }}
             onOpenReport={openReport}
+            onOutline={setOutline}
           />
         )}
         {tab === "reports" && (
@@ -1250,6 +1252,7 @@ export default function App({ data }: { data: BoardData }) {
             data={data}
             modelProfile={modelProfile}
             onProfileChange={setModelProfile}
+            onOutline={setOutline}
           />
         )}
         {tab === "timeline" && (
@@ -1261,6 +1264,7 @@ export default function App({ data }: { data: BoardData }) {
             onAddDocComment={addDocComment}
             onPaintResult={onPaintResult}
             onAddGeneral={addGeneral}
+            onOutline={setOutline}
           />
         )}
         {tab === "reviews" && (
