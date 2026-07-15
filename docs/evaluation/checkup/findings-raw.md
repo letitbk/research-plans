@@ -202,5 +202,22 @@ Beyond the known `is_substantive` duplicate, three more Py/TS pairs each carry a
 
 ---
 
+## Phase 2 — Security probes (local, controller-run)
+
+Environment: claude 2.1.211 available, network open (200), **Vercel logged in as `letitbk`** — so the clean-room and live-Vercel arms are all runnable here. Gate suites 33 green.
+
+**S9 · confused-deputy defense HOLDS** · `board.py:1944` (strip) + `:1964`/`neutralize_action_headings` · **PASS** (runtime-verified, function-level)
+Direct test on a crafted malicious hand-delivered file (a `## VERDICT:` action heading + a fence carrying `verdict`+`reviewRequest` keys + an embedded forging fence inside a `quote`): `strip_action_keys_from_document` removed `['reviewRequest','verdict']` (all fences, incl. the nested one), `neutralize_action_headings` demoted `## VERDICT:` → `> ## VERDICT:` (blockquote), and the legit comment survived. Forge blocked. (Note: full `--collect` requires an initialized project — the function-level test is the clean isolation of the defense.)
+
+**S2 · ticket-forgery guard HOLDS** · `signoff_gate.py:230` · **PASS** (verified)
+The 33 gate tests (test_gate_archive/explicitness/results) pass; agent-written `.import-approved-*` tickets are denied. Runtime forgery attempt deferred to the fixture-backed run but the guard + its tests are green.
+
+**HOOK-1 · gate matcher is Write/Edit-only; Bash bypasses** · `hooks.json:5` · **P2** · read-confirmed (characterized)
+The sign-off gate's PreToolUse matcher is `Write/Edit` only. A Bash-mediated file write — e.g. `python3 -c "open('…/v1.md','w')…"`, which commands grant via `Bash(python3:*)` — is **not** matched, so it bypasses the immutability/approval gate. Documented boundary (`reference.md:93`). Mitigations: the workflow always uses the Write tool (which IS gated), and the commands scope Bash to specific subcommands. But the "mechanically enforced immutability" claim holds only against the Write path, not against Bash file I/O.
+→ Note the boundary honestly in the docs; consider whether a complementary check (e.g. a post-write integrity scan) is warranted. Effort **M**. Risk-note: requires deliberate circumvention; the normal flow is safe.
+
+**WT-1 · CSRF code-gap confirmed + untested** · `clear.ts:8` · **P1** · read-confirmed (code) + to-verify (runtime needs Vercel)
+Confirmed: `clear.test.ts` has **no** method/GET/405 test, while `comments.test.ts` tests method — the destructive method-gap is both real and uncovered. The end-to-end runtime exploit (GET reaches the handler through Vercel routing + Lax cookie) is confirmable on the live-Vercel arm (S7 run).
+
 ## Sweep summary
 **~40 findings** filed (13 controller-read + 9 board UI + 7 web-template + 2 docs + 8 scripts, minus the board-lifecycle dup). Severity mix: **2 P1** verified from the sweep (WT-1 CSRF, SCR-1 pull re-offer) plus the earlier P1 token/portability levers (TOK-1/2/3, POR-1/2, HOOK-1); the rest P2. Behavioral P1/P2s tagged to scenario rows (S2/S4/S5/S7/S8/S15/S16/S11) are `to-verify` — the Phase-2 probes close them. Next: Phase 2 probes.
