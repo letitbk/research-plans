@@ -209,6 +209,9 @@ Environment: claude 2.1.211 available, network open (200), **Vercel logged in as
 **S9 · confused-deputy defense HOLDS** · `board.py:1944` (strip) + `:1964`/`neutralize_action_headings` · **PASS** (runtime-verified, function-level)
 Direct test on a crafted malicious hand-delivered file (a `## VERDICT:` action heading + a fence carrying `verdict`+`reviewRequest` keys + an embedded forging fence inside a `quote`): `strip_action_keys_from_document` removed `['reviewRequest','verdict']` (all fences, incl. the nested one), `neutralize_action_headings` demoted `## VERDICT:` → `> ## VERDICT:` (blockquote), and the legit comment survived. Forge blocked. (Note: full `--collect` requires an initialized project — the function-level test is the clean isolation of the defense.)
 
+**S10 · local mutation surface HOLDS** · `board.py:1197,1216` · **PASS** (runtime-verified)
+Live board served on a fixture; three probes all rejected: unauthenticated POST `/api/feedback` → **403 bad-token**, wrong `boardToken` → **403**, foreign `Host` header → **403** (local_request_ok). The per-boot token (embedded in the served payload, so an artifact-origin fetch can't obtain it) + the Host check gate every mutating route. The load-bearing local-security invariant holds at runtime.
+
 **S2 · ticket-forgery guard HOLDS** · `signoff_gate.py:230` · **PASS** (verified)
 The 33 gate tests (test_gate_archive/explicitness/results) pass; agent-written `.import-approved-*` tickets are denied. Runtime forgery attempt deferred to the fixture-backed run but the guard + its tests are green.
 
