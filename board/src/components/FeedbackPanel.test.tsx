@@ -93,4 +93,9 @@ describe("FeedbackPanel", () => {
     expect(aside.style.top).toBe("57px");
     expect(aside.className).toContain("sticky");
   });
+
+  it("labels hosted author names as self-entered and unverified", () => {
+    render(<FeedbackPanel {...props({ hosted: true, canPost: false })} />);
+    expect(screen.getByText(/self-entered and not verified/i)).toBeTruthy();
+  });
 });
