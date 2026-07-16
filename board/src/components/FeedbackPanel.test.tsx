@@ -98,4 +98,20 @@ describe("FeedbackPanel", () => {
     render(<FeedbackPanel {...props({ hosted: true, canPost: false })} />);
     expect(screen.getByText(/self-entered and not verified/i)).toBeTruthy();
   });
+
+  it("renders hosted HTML and javascript payloads as inert text", () => {
+    const payload = '<img src=x onerror="alert(1)"><a href="javascript:alert(2)">x</a>';
+    const { container } = render(
+      <FeedbackPanel
+        {...props({
+          hosted: true,
+          canPost: false,
+          annotations: [{ ...ann("a1"), comment: payload }],
+        })}
+      />,
+    );
+    expect(screen.getByText(payload)).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+  });
 });
