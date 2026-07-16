@@ -202,6 +202,11 @@ Beyond the known `is_substantive` duplicate, three more Py/TS pairs each carry a
 
 ---
 
+## Phase 2 — S7 hosted-board (code-level; live deploy deferred)
+
+**S7 · CSRF end-to-end CONFIRMED from code; blob-privacy static-contract confirmed** · **NOT-RUN (runtime)** — deploy deferred
+The two S7 questions resolve from code without a deploy: (1) the **CSRF** is confirmed end-to-end (`middleware.ts:72` passes an authed GET through with no method gate → unguarded `clear.ts`) — see WT-1, fixed in PR #20; (2) **blob privacy** — `blobstore.ts:33` returns parsed content only (no blob URL leaves the module) and the store is created `--access private`, so it is a **static contract** whose runtime enforcement is a Vercel platform guarantee, not a plugin behavior. The live deploy's marginal value is low, and it needs an interactive blob-store connect (an agent can't drive the TUI). **Real-world flag:** the author has multiple deployed Vercel projects that look like review boards; any that are research-plans hosted boards carry WT-1 until PR #20 merges and they redeploy.
+
 ## Phase 2 — Security probes (local, controller-run)
 
 Environment: claude 2.1.211 available, network open (200), **Vercel logged in as `letitbk`** — so the clean-room and live-Vercel arms are all runnable here. Gate suites 33 green.
@@ -220,7 +225,7 @@ The sign-off gate's PreToolUse matcher is `Write/Edit` only. A Bash-mediated fil
 → Note the boundary honestly in the docs; consider whether a complementary check (e.g. a post-write integrity scan) is warranted. Effort **M**. Risk-note: requires deliberate circumvention; the normal flow is safe.
 
 **WT-1 · CSRF code-gap confirmed + untested** · `clear.ts:8` · **P1** · read-confirmed (code) + to-verify (runtime needs Vercel)
-Confirmed: `clear.test.ts` has **no** method/GET/405 test, while `comments.test.ts` tests method — the destructive method-gap is both real and uncovered. The end-to-end runtime exploit (GET reaches the handler through Vercel routing + Lax cookie) is confirmable on the live-Vercel arm (S7 run).
+Confirmed: `clear.test.ts` has **no** method/GET/405 test, while `comments.test.ts` tests method — the destructive method-gap is both real and uncovered. **End-to-end CONFIRMED from code (no deploy needed):** `middleware.ts:72` does `if (authed) return next()` with **no method check** — an authed request to `/api/clear` passes straight to the function; `isAuthed` (`middleware.ts:60`) accepts the `board_session` cookie, which the browser sends on a top-level GET navigation (SameSite=Lax). Chain: authed top-level GET → middleware passes → unguarded `clear.ts` runs delete-all. The live deploy would only demonstrate this. **FIXED out-of-band in PR #20** (branch `fix-clear-csrf`): method guard added to `clear.ts` (405 on non-POST), regression test, 34 web-template tests green, tsc clean, codex-approved; the legitimate `board.py:1682` caller already POSTs. Awaiting BK merge.
 
 ## Sweep summary
 **~40 findings** filed (13 controller-read + 9 board UI + 7 web-template + 2 docs + 8 scripts, minus the board-lifecycle dup). Severity mix: **2 P1** verified from the sweep (WT-1 CSRF, SCR-1 pull re-offer) plus the earlier P1 token/portability levers (TOK-1/2/3, POR-1/2, HOOK-1); the rest P2. Behavioral P1/P2s tagged to scenario rows (S2/S4/S5/S7/S8/S15/S16/S11) are `to-verify` — the Phase-2 probes close them. Next: Phase 2 probes.
