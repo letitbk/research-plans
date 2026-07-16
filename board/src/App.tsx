@@ -1049,7 +1049,7 @@ export default function App({ data }: { data: BoardData }) {
         </div>
       )}
       <header ref={headerRef} className="sticky top-0 z-30 border-b border-stone-200 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-4 px-5 py-3">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-4 px-5 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-stone-900 dark:text-stone-100">
               {data.project.name}
@@ -1059,7 +1059,10 @@ export default function App({ data }: { data: BoardData }) {
               {data.git.available && data.git.head ? ` · ${data.git.head}` : ""}
             </div>
           </div>
-          <nav className="ml-4 flex gap-1">
+          <nav
+            aria-label="Board views"
+            className="order-3 flex w-full flex-wrap gap-1 lg:order-none lg:ml-4 lg:w-auto"
+          >
             {(data.files.archives?.length
               ? [...TABS, { id: "archive" as Tab, label: "Archive" }]
               : TABS

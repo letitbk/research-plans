@@ -98,6 +98,14 @@ function fixture(): BoardData {
 }
 
 describe("App (static mode render/route)", () => {
+  it("lets the header and tab navigation wrap at narrow widths", () => {
+    const { container } = render(<App data={fixture()} />);
+    expect(container.querySelector("header > div")?.className).toContain("flex-wrap");
+    expect(screen.getByRole("navigation", { name: /board views/i }).className).toContain(
+      "flex-wrap",
+    );
+  });
+
   it("routes Files -> component -> Plans -> vN, then collapses the sidebar", () => {
     render(<App data={fixture()} />);
 
