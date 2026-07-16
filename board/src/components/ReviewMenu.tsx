@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReviewRequest } from "../lib/types";
 
 // The reviewer roster shared by every "Review with ▾" control (v0.9). All four
@@ -19,19 +19,40 @@ export default function ReviewMenu({
   onPick: (agent: ReviewRequest["agent"]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         className="rounded-full border border-violet-300 dark:border-violet-800 bg-violet-50 dark:bg-violet-950 px-3 py-1 text-xs font-medium text-violet-700 dark:text-violet-300 hover:border-violet-500 dark:hover:border-violet-400"
         onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         Review with ▾
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 py-1 shadow-lg">
+        <div role="menu" className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 py-1 shadow-lg">
           {REVIEW_AGENTS.map((ag) => (
             <button
               key={ag.id}
+              role="menuitem"
               className="block w-full px-3 py-1.5 text-left text-xs text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
               onClick={() => {
                 setOpen(false);
