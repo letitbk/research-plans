@@ -5,8 +5,12 @@ import { list, del } from "@vercel/blob";
 
 export interface ClearResult { status: number; json: unknown; }
 
-export async function run(headers: HeaderBag, env: Record<string, string | undefined>, now: number): Promise<ClearResult> {
+export async function run(method: string, headers: HeaderBag, env: Record<string, string | undefined>, now: number): Promise<ClearResult> {
   if (!isAuthed(env, headers, now)) return { status: 401, json: { error: "unauthorized" } };
+  // CSRF guard: this is a destructive delete-all. A SameSite=Lax session cookie
+  // is sent on a top-level GET navigation, so an unguarded GET to /api/clear
+  // would wipe every comment. Require POST, exactly as /api/comments does.
+  if (method !== "POST") return { status: 405, json: { error: "method not allowed" } };
   const token = env.BLOB_READ_WRITE_TOKEN as string;
   let cursor: string | undefined;
   let n = 0;
@@ -19,7 +23,7 @@ export async function run(headers: HeaderBag, env: Record<string, string | undef
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  const r = await run(req.headers as HeaderBag, process.env, Math.floor(Date.now() / 1000));
+  const r = await run(req.method ?? "GET", req.headers as HeaderBag, process.env, Math.floor(Date.now() / 1000));
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
   res.status(r.status).json(r.json);
 }

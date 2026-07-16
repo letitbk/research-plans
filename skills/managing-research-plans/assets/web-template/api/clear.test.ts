@@ -20,8 +20,16 @@ const authHeaders = { "x-board-key": "pull-1" };
 
 describe("clear", () => {
   it("401 without auth (never HTML), and deletes nothing", async () => {
-    const result = await run({}, env, now);
+    const result = await run("POST", {}, env, now);
     expect(result.status).toBe(401);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("405 on a non-POST method even when authed, and deletes nothing (CSRF guard)", async () => {
+    // A SameSite=Lax cookie is sent on a top-level GET navigation; without a
+    // method guard, a GET to /api/clear would wipe every comment. Require POST.
+    const result = await run("GET", authHeaders, env, now);
+    expect(result.status).toBe(405);
     expect(del).not.toHaveBeenCalled();
   });
 
@@ -33,7 +41,7 @@ describe("clear", () => {
       ],
       hasMore: false,
     });
-    const result = await run(authHeaders, env, now);
+    const result = await run("POST", authHeaders, env, now);
     expect(result.status).toBe(200);
     expect(result.json).toEqual({ ok: true, deleted: 2 });
     expect(del).toHaveBeenCalledTimes(2);
@@ -50,7 +58,7 @@ describe("clear", () => {
       blobs: [{ url: "https://x.blob.vercel-storage.com/comments/2.json" }],
       hasMore: false,
     });
-    const result = await run(authHeaders, env, now);
+    const result = await run("POST", authHeaders, env, now);
     expect(list).toHaveBeenCalledTimes(2);
     expect((result.json as { deleted: number }).deleted).toBe(2);
   });
