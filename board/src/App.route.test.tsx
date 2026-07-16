@@ -125,4 +125,26 @@ describe("App (static mode render/route)", () => {
     expect(screen.queryByRole("button", { name: /outline/i })).toBeNull();
     expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeTruthy();
   });
+
+  it("renders copy fallback text in-DOM without native dialogs", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const promptSpy = vi.spyOn(window, "prompt").mockImplementation(() => null);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<App data={{ ...fixture(), mode: "remote", shareHash: "abc" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^feedback/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy feedback to clipboard/i }));
+
+    const textarea = await screen.findByRole("textbox", { name: /feedback markdown/i });
+    expect((textarea as HTMLTextAreaElement).value).toContain("board-feedback");
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(promptSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+    promptSpy.mockRestore();
+  });
 });

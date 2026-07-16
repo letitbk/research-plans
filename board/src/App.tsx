@@ -216,6 +216,10 @@ export default function App({ data }: { data: BoardData }) {
     gate !== null || (data.seededAnnotations?.length ?? 0) > 0,
   );
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [copyFallbackState, setCopyFallbackState] = useState<{
+    text: string;
+    copied: boolean | null;
+  } | null>(null);
   // Reviewer name: remote persists it under the payload-hashed storageKey
   // (fine — a remote reviewer downloads one board once); hosted persists it
   // under webKey so a republish doesn't blank the name field.
@@ -750,11 +754,12 @@ export default function App({ data }: { data: BoardData }) {
   };
 
   const copyFallback = async () => {
+    setCopyFallbackState({ text: feedbackDocument, copied: null });
     try {
       await navigator.clipboard.writeText(feedbackDocument);
-      alert("Feedback copied — paste it into your Claude Code session.");
+      setCopyFallbackState({ text: feedbackDocument, copied: true });
     } catch {
-      window.prompt("Copy the feedback below:", feedbackDocument);
+      setCopyFallbackState({ text: feedbackDocument, copied: false });
     }
   };
 
@@ -1004,6 +1009,40 @@ export default function App({ data }: { data: BoardData }) {
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950">
+      {copyFallbackState && (
+        <div
+          role="dialog"
+          aria-label="Copy feedback"
+          className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 p-4 shadow-2xl"
+        >
+          <div className="mb-2 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                Copy feedback
+              </h2>
+              <p className="text-xs text-stone-600 dark:text-stone-400">
+                {copyFallbackState.copied
+                  ? "Copied. Paste this into your Claude Code session."
+                  : "Select the feedback below and copy it into your Claude Code session."}
+              </p>
+            </div>
+            <button
+              className="rounded px-2 py-1 text-xs text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
+              onClick={() => setCopyFallbackState(null)}
+            >
+              Close
+            </button>
+          </div>
+          <textarea
+            aria-label="Feedback markdown"
+            className="h-40 w-full resize-y rounded border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-950 p-2 font-mono text-xs text-stone-800 dark:text-stone-200"
+            readOnly
+            value={copyFallbackState.text}
+            autoFocus
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </div>
+      )}
       {syncNotice && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-200 shadow-lg">
           {syncNotice}
@@ -1287,4 +1326,3 @@ export default function App({ data }: { data: BoardData }) {
     </div>
   );
 }
-
