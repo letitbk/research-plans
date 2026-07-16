@@ -99,7 +99,6 @@ describe("PlanReader per-bundle report chip keying", () => {
         onAddPlanComment={noop}
         onPaintResult={noop}
         onOpenResults={noop}
-        canPost={false}
         onOpenReport={onOpenReport}
       />,
     );

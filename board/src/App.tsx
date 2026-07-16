@@ -1194,7 +1194,6 @@ export default function App({ data }: { data: BoardData }) {
               setSelectedComponent(slug);
               setTab("results");
             }}
-            canPost={canPost}
             onRequestReview={guardConn(requestReview)}
             onOpenArchive={
               data.files.archives?.length ? () => setTab("archive") : undefined
@@ -1217,7 +1216,6 @@ export default function App({ data }: { data: BoardData }) {
               setSelectedComponent(slug);
               setTab("results");
             }}
-            canPost={canPost}
             onRequestReview={guardConn(requestReview)}
             onOpenReport={openReport}
             onOutline={setOutline}
@@ -1229,7 +1227,6 @@ export default function App({ data }: { data: BoardData }) {
             onReopen={guardConn(submitReopen)}
             navRequest={navRequest?.tab === "results" ? { token: navRequest.token, resultsVersion: navRequest.resultsVersion, scriptPath: navRequest.scriptPath } : null}
             canAnnotate={canAnnotate}
-            canPost={canPost}
             selectedComponent={selectedComponent}
             annotations={annotations}
             onAddResultComment={addResultComment}

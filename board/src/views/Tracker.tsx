@@ -46,7 +46,6 @@ export default function Tracker({
   onOpenComponent,
   onOpenResults,
   onAddGeneral,
-  canPost,
   onRequestReview,
   onSignoff,
   onOpenArchive,
@@ -65,7 +64,6 @@ export default function Tracker({
   onOpenComponent: (slug: string | null, name: string) => void;
   onOpenResults: (slug: string) => void;
   onAddGeneral: (view: string, comment: string) => void;
-  canPost?: boolean;
   onRequestReview?: (req: ReviewRequest) => void;
   onSignoff?: (req: SignoffRequest) => void;
   onOpenArchive?: () => void;
