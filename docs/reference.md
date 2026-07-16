@@ -100,6 +100,7 @@ The same hook also enforces **results-bundle immutability**: writes inside an ex
 plans/
 ├── master-plan.md              roadmap + components tracker
 ├── decision-log.md             append-only, timestamped
+├── model-profile.md            per-stage model and effort preferences
 ├── board.html                  optional shareable snapshot (regenerate, never edit)
 ├── archive/
 │   └── master-plan-<date>.md   archived by /renew; immutable renewal record
