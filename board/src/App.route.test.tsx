@@ -117,14 +117,14 @@ describe("App (static mode render/route)", () => {
     render(<App data={fixture()} />);
 
     // Sidebar sub-tabs exist (panel open by default in static mode).
-    expect(screen.getByRole("button", { name: /outline/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /files/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /outline/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /files/i })).toBeTruthy();
 
     // Switch to Files.
-    fireEvent.click(screen.getByRole("button", { name: /files/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /files/i }));
 
     // Expand 01-alpha's Plans group (depth-1 groups start collapsed) and open v1.
-    const compLi = screen.getByRole("button", { name: "01-alpha" }).closest("li")!;
+    const compLi = screen.getByRole("treeitem", { name: "01-alpha" }).closest("li")!;
     fireEvent.click(within(compLi).getByText("Plans"));
     fireEvent.click(within(compLi).getByText("v1"));
 
@@ -136,8 +136,8 @@ describe("App (static mode render/route)", () => {
 
     // Collapse the sidebar; its panel body (the sub-tab buttons) is hidden.
     fireEvent.click(screen.getByRole("button", { name: /collapse sidebar/i }));
-    expect(screen.queryByRole("button", { name: /files/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /outline/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /files/i })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /outline/i })).toBeNull();
     expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeTruthy();
   });
 

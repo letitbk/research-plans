@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { NavTarget } from "../lib/navTarget";
 import type { FileNode } from "../lib/filesTree";
 import type { OutlineEntry } from "../lib/outline";
@@ -37,6 +37,12 @@ export default function Sidebar({
   topOffsetPx?: number; // App's measured sticky-header height (headerOffset)
 }) {
   const [state, setState] = useState<Persisted>(() => load(storageKey, defaultCollapsed));
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const subTabRefs = useRef<Record<SubTab, HTMLButtonElement | null>>({
+    outline: null,
+    files: null,
+  });
+  const focusAfterToggle = useRef<"expand" | "tab" | null>(null);
   const persist = (next: Persisted) => {
     setState(next);
     try {
@@ -46,6 +52,16 @@ export default function Sidebar({
     }
   };
 
+  useEffect(() => {
+    if (state.collapsed && focusAfterToggle.current === "expand") {
+      expandRef.current?.focus();
+      focusAfterToggle.current = null;
+    } else if (!state.collapsed && focusAfterToggle.current === "tab") {
+      subTabRefs.current[state.sub]?.focus();
+      focusAfterToggle.current = null;
+    }
+  }, [state.collapsed, state.sub]);
+
   if (state.collapsed) {
     return (
       <aside
@@ -53,9 +69,14 @@ export default function Sidebar({
         style={{ top: topOffsetPx }}
       >
         <button
+          ref={expandRef}
           aria-label="Expand sidebar"
+          aria-expanded={false}
           className="w-full py-2 text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
-          onClick={() => persist({ ...state, collapsed: false })}
+          onClick={() => {
+            focusAfterToggle.current = "tab";
+            persist({ ...state, collapsed: false });
+          }}
         >
           »
         </button>
@@ -68,10 +89,15 @@ export default function Sidebar({
       className="w-full self-start overflow-y-auto border-b border-stone-200 pb-3 dark:border-stone-800 lg:sticky lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
       style={{ top: topOffsetPx, maxHeight: `calc(100vh - ${topOffsetPx + 16}px)` }}
     >
-      <div className="mb-3 flex items-center gap-1">
+      <div role="tablist" aria-label="Sidebar views" className="mb-3 flex items-center gap-1">
         {(["outline", "files"] as SubTab[]).map((s) => (
           <button
             key={s}
+            ref={(el) => { subTabRefs.current[s] = el; }}
+            id={`sidebar-${s}-tab`}
+            role="tab"
+            aria-selected={state.sub === s}
+            aria-controls={`sidebar-${s}-panel`}
             className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
               state.sub === s
                 ? "bg-stone-900 text-white dark:bg-stone-200 dark:text-stone-900"
@@ -84,15 +110,24 @@ export default function Sidebar({
         ))}
         <button
           aria-label="Collapse sidebar"
+          aria-expanded={true}
           className="ml-auto rounded px-1.5 text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
-          onClick={() => persist({ ...state, collapsed: true })}
+          onClick={() => {
+            focusAfterToggle.current = "expand";
+            persist({ ...state, collapsed: true });
+          }}
         >
           «
         </button>
       </div>
 
       {state.sub === "outline" ? (
-        <ul className="space-y-0.5">
+        <ul
+          id="sidebar-outline-panel"
+          role="tabpanel"
+          aria-labelledby="sidebar-outline-tab"
+          className="space-y-0.5"
+        >
           {outline.length === 0 && (
             <li className="px-2 py-1 text-xs text-stone-400">No outline for this view.</li>
           )}
@@ -109,7 +144,12 @@ export default function Sidebar({
           ))}
         </ul>
       ) : (
-        <ul className="space-y-0.5">
+        <ul
+          id="sidebar-files-panel"
+          role="tree"
+          aria-label="Project files"
+          className="space-y-0.5"
+        >
           {tree.map((n) => (
             <TreeNode key={n.id} node={n} depth={0} onNavigate={onNavigate} activeTab={activeTab} activeComponent={activeComponent} />
           ))}
@@ -136,10 +176,57 @@ function TreeNode({
   const hasChildren = !!node.children?.length;
   const isActiveComponent =
     node.id === `component:${activeComponent}` && HIGHLIGHT_TABS.has(activeTab);
+  const activate = () =>
+    hasChildren ? setOpen((o) => !o) : node.route && onNavigate(node.route);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const item = event.currentTarget;
+    const tree = item.closest('[role="tree"]');
+    const items = tree
+      ? Array.from(tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'))
+      : [];
+    const index = items.indexOf(item);
+    if (event.key === "ArrowDown" && index < items.length - 1) {
+      event.preventDefault();
+      items[index + 1].focus();
+    } else if (event.key === "ArrowUp" && index > 0) {
+      event.preventDefault();
+      items[index - 1].focus();
+    } else if (event.key === "Home" && items.length > 0) {
+      event.preventDefault();
+      items[0].focus();
+    } else if (event.key === "End" && items.length > 0) {
+      event.preventDefault();
+      items[items.length - 1].focus();
+    } else if (event.key === "ArrowRight" && hasChildren) {
+      event.preventDefault();
+      if (!open) setOpen(true);
+      else item.parentElement?.querySelector<HTMLButtonElement>('[role="group"] [role="treeitem"]')?.focus();
+    } else if (event.key === "ArrowLeft") {
+      if (hasChildren && open) {
+        event.preventDefault();
+        setOpen(false);
+      } else {
+        const parentGroup = item.parentElement?.parentElement;
+        const parentItem = parentGroup?.parentElement?.querySelector<HTMLButtonElement>(
+          ':scope > [role="treeitem"]',
+        );
+        if (parentItem) {
+          event.preventDefault();
+          parentItem.focus();
+        }
+      }
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate();
+    }
+  };
 
   return (
-    <li>
+    <li role="none">
       <button
+        role="treeitem"
+        aria-expanded={hasChildren ? open : undefined}
         data-active={isActiveComponent ? "true" : undefined}
         className={`w-full rounded px-2 py-1 text-left text-xs hover:bg-stone-100 dark:hover:bg-stone-800 ${
           isActiveComponent
@@ -147,7 +234,8 @@ function TreeNode({
             : "text-stone-600 dark:text-stone-400"
         }`}
         style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-        onClick={() => (hasChildren ? setOpen((o) => !o) : node.route && onNavigate(node.route))}
+        onClick={activate}
+        onKeyDown={handleKeyDown}
       >
         {hasChildren && <span aria-hidden className="mr-1 text-stone-400">{open ? "▾" : "▸"}</span>}
         <span>{node.label}</span>
@@ -158,7 +246,7 @@ function TreeNode({
         )}
       </button>
       {hasChildren && open && (
-        <ul className="space-y-0.5">
+        <ul role="group" className="space-y-0.5">
           {node.children!.map((c) => (
             <TreeNode key={c.id} node={c} depth={depth + 1} onNavigate={onNavigate} activeTab={activeTab} activeComponent={activeComponent} />
           ))}
