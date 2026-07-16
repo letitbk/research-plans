@@ -639,5 +639,27 @@ class TestIntegrity(unittest.TestCase):
             self.assertIn("integrity", err)
 
 
+class TestResultsCommandDocs(unittest.TestCase):
+    def test_adopt_reconcile_and_regeneration_route_to_reference(self):
+        repo = Path(__file__).resolve().parents[1]
+        command = (repo / "commands" / "results.md").read_text(encoding="utf-8")
+        reference = (repo / "skills" / "managing-research-plans" / "references" /
+                     "results-adopt.md").read_text(encoding="utf-8")
+
+        self.assertIn("references/results-adopt.md", command)
+        for heading in ("Adopt existing results", "Reconcile missing results",
+                        "Regeneration and run recipes", "Summary-only bundles"):
+            self.assertIn(heading, command)
+            self.assertIn(heading, reference)
+        self.assertNotIn("8. **Adopt mode", command)
+        self.assertNotIn("9. **Reconcile mode", command)
+        self.assertNotIn("## Regeneration,", command)
+        self.assertIn("inline steps 4 through 7", reference)
+        self.assertIn("inline steps 2 through 7", reference)
+        for field in ("`command`", "`cwd`", "`args`", "`expectedOutputs`",
+                      "`approvedHash`"):
+            self.assertIn(field, reference)
+
+
 if __name__ == "__main__":
     unittest.main()
