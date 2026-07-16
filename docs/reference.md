@@ -47,7 +47,7 @@ The board follows your OS light/dark preference, with a header toggle to overrid
 
 ### Two modes
 
-**Live** — `/research-plans:board` starts a small local server (`python3` only, nothing to install) on a stable per-project port. Bookmark the URL; it stays valid for the whole session. The live board is a control surface: your feedback panel docks side by side with the content, and approve / request-changes / review buttons are always on hand in the Tracker, Plan, and Results views. Select text to attach a comment, act on a plan, or press "Send to Claude" — your session applies each action and the board refreshes itself with the updated state. After an idle hour it goes to sleep; `/research-plans:board` wakes it at the same URL.
+**Live** — `/research-plans:board` starts a small local server (`python3` only, nothing to install) on a stable per-project port. Bookmark the URL; it stays valid for the whole session. The live board is a control surface: your feedback panel docks side by side with the content, and approve / request-changes / review buttons are always on hand in the Tracker, Plan, and Results views. Select text to attach a comment, act on a plan, or press "Send to Claude." The board has no idle timeout. It closes when you submit an action so your session can route it; `/research-plans:board` reopens it at the same URL whenever you want to continue.
 
 Or let an agent do the reviewing: the **Review with** button on any plan version, the master plan, or a results bundle runs Codex, Gemini, a Claude subagent, or a three-lens subagent panel and seeds its section-anchored comments onto the board — attributed to the reviewer — for you to curate before they route the same way.
 
