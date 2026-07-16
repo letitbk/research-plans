@@ -1620,7 +1620,11 @@ def pull(root, args):
         inbox_path.write_text(doc, encoding="utf-8")   # inbox FIRST
         docs.append((inbox_path, doc))
     # Only after every document is safely on disk do we mark ids pulled.
-    _pulled_path(root).write_text(json.dumps(sorted(pulled | {c["id"] for c in new})))
+    pulled_path = _pulled_path(root)
+    pulled_tmp = pulled_path.with_name(pulled_path.name + ".tmp")
+    pulled_tmp.write_text(json.dumps(sorted(pulled | {c["id"] for c in new})),
+                          encoding="utf-8")
+    os.replace(pulled_tmp, pulled_path)
     for inbox_path, doc in docs:
         inspect_feedback_document(root, doc)   # route (prints)
         inbox_path.unlink()

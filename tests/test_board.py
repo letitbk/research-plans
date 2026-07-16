@@ -1277,6 +1277,28 @@ class TestPull(unittest.TestCase):
             finally:
                 import os; del os.environ["CLAUDE_PLUGIN_DATA"]
 
+    def test_pulled_state_survives_failed_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); make_project(root); self._setup(root)
+            state_path = root / "plans" / ".board-web-pulled.json"
+            prior = '["prior-comment"]'
+            state_path.write_text(prior, encoding="utf-8")
+            original_replace = board.os.replace
+
+            def fail_replace(src, dst):
+                self.assertEqual(Path(src).name, ".board-web-pulled.json.tmp")
+                self.assertEqual(Path(dst), state_path)
+                raise OSError("simulated replace failure")
+
+            board.os.replace = fail_replace
+            try:
+                with self.assertRaisesRegex(OSError, "simulated replace failure"):
+                    board.pull(root, board.parse_args(["--pull"]))
+                self.assertEqual(state_path.read_text(encoding="utf-8"), prior)
+            finally:
+                board.os.replace = original_replace
+                import os; del os.environ["CLAUDE_PLUGIN_DATA"]
+
     def test_collision_proof_inbox_filenames(self):
         # Two DIFFERENT (author, clientId) groups that sanitize to the SAME
         # filename prefix must not overwrite each other in the inbox — that
