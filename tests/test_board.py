@@ -921,6 +921,25 @@ class TestDrift(unittest.TestCase):
             make_project(root)
             self.assertNotIn("drift", board.collect_payload(root, "remote", None))
 
+    def test_source_drift_read_error_is_advisory_but_visible(self):
+        import contextlib
+        import io
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_project(root)
+            original = board.changed_sources
+            board.changed_sources = lambda *_args: (_ for _ in ()).throw(
+                OSError("manifest unreadable"))
+            self.addCleanup(setattr, board, "changed_sources", original)
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                drift = board.collect_payload(root, "static", None)["drift"]
+
+            self.assertEqual(drift["sourceDrift"], [])
+            self.assertIn("01-data-prep", stderr.getvalue())
+            self.assertIn("manifest unreadable", stderr.getvalue())
+
 
 class TestArchives(unittest.TestCase):
     def test_archives_collected_present_only(self):

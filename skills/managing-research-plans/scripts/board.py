@@ -455,7 +455,9 @@ def collect_drift(root, exec_groups, master_content="", archive_contents=()):
             continue  # pre-renewal component — archived work is never nagged about
         try:
             _, changed = changed_sources(root, g["component"])
-        except Exception:
+        except Exception as exc:
+            print("warning: could not check source drift for %s: %s" %
+                  (g["component"], exc), file=sys.stderr)
             changed = []
         if changed:
             source_drift.append(g["component"])
