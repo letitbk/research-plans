@@ -865,9 +865,6 @@ def project_id(root):
 
 
 def token_ok(body, expected):
-    """Constant-time per-boot board token check for mutating routes.
-    NOT yet enforced in do_POST — enforcement flips atomically with the
-    client senders + template rebuild (plan 2/3 Task 6)."""
     return hmac.compare_digest(str(body.get("boardToken", "")), expected)
 
 
