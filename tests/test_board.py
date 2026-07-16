@@ -181,6 +181,19 @@ class TestWebConfig(unittest.TestCase):
                 del os.environ["CLAUDE_PLUGIN_DATA"]
 
 
+class TestWebPublishingDocs(unittest.TestCase):
+    def test_firewall_rate_limit_is_required_before_first_deploy(self):
+        repo = Path(__file__).resolve().parents[1]
+        command = (repo / "commands" / "board.md").read_text(encoding="utf-8")
+        guide = (repo / "docs" / "hosting-the-board.md").read_text(encoding="utf-8")
+
+        for text in (command, guide):
+            self.assertRegex(text, r"(?is)firewall.{0,240}required")
+            self.assertRegex(text, r"(?is)firewall.{0,240}primary defense")
+        self.assertLess(command.index("firewall rate limiting"),
+                        command.index("**First deploy.**"))
+
+
 class TestLocalRequestGuard(unittest.TestCase):
     def test_rejects_cross_origin(self):
         self.assertFalse(board.local_request_ok(
