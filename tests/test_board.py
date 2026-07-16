@@ -2285,7 +2285,7 @@ class TestSignoffAction(unittest.TestCase):
         self.assertFalse(self.ticket.exists())
         self.assertFalse((self.root / "plans" / ".board-feedback.md").exists())
 
-    def test_order_replace_failure_leaves_recoverable_orphan_ticket(self):
+    def test_order_replace_failure_rolls_back_ticket_slot_and_temp_file(self):
         url, info, t = serve_in_thread(self.root, timeout=1)
         original_replace = board.os.replace
         pending = self.root / "plans" / ".board-feedback.md"
@@ -2304,21 +2304,16 @@ class TestSignoffAction(unittest.TestCase):
                           body=self._signoff_body(info["boardToken"]))
         finally:
             board.os.replace = original_replace
-        t.join(timeout=2)
         self.assertFalse(pending.exists())
-        self.assertTrue(self.ticket.exists())
-        self.assertIn("orderActionId", json.loads(
-            self.ticket.read_text(encoding="utf-8")))
-
-        batch_ticket = board.write_ticket(
-            self.root, "02-other", 1,
-            (self.root / "plans" / "execution" / "02-other" / "v1.md")
-            .read_text(encoding="utf-8"),
-            "batch-only")
-        retired = board.retire_orphan_order_tickets(self.root)
-        self.assertEqual(retired, [self.ticket])
         self.assertFalse(self.ticket.exists())
-        self.assertTrue(batch_ticket.exists())
+        self.assertFalse((self.root / "plans" / ".board-feedback.md.tmp").exists())
+
+        # The failed reservation is released, so this same server can accept a
+        # retry after the filesystem fault is gone.
+        retry_status, _, _ = http_json(
+            url, "/api/feedback", body=self._signoff_body(info["boardToken"]))
+        self.assertEqual(retry_status, 200)
+        t.join(timeout=2)
 
     def test_stale_draft_rejected_exit_4_no_ticket(self):
         proc, url = spawn_board(self.root, "--timeout", "15")

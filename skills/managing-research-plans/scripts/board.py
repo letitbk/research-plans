@@ -1114,16 +1114,32 @@ def serve(root, payload, args):
                 return pending_order
             slot["actionId"] = uuid.uuid4().hex
         aid = slot["actionId"]
-        doc = build_doc(aid)
-        if before_commit is not None:
-            before_commit(aid)
-        if write_file:
-            # Authorization ticket first (when required), then the durable
-            # order, then unblock. This never exposes an order without the
-            # ticket needed to route it.
-            tmp = plans_dir / ".board-feedback.md.tmp"
-            tmp.write_text(doc, encoding="utf-8")
-            os.replace(tmp, plans_dir / ".board-feedback.md")
+        committed_ticket = None
+        tmp = plans_dir / ".board-feedback.md.tmp"
+        try:
+            doc = build_doc(aid)
+            if before_commit is not None:
+                committed_ticket = before_commit(aid)
+            if write_file:
+                # Authorization ticket first (when required), then the durable
+                # order, then unblock. This never exposes an order without the
+                # ticket needed to route it.
+                tmp.write_text(doc, encoding="utf-8")
+                os.replace(tmp, plans_dir / ".board-feedback.md")
+        except Exception:
+            if committed_ticket is not None:
+                try:
+                    committed_ticket.unlink()
+                except OSError:
+                    pass
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            with slot_lock:
+                if slot["actionId"] == aid:
+                    slot["actionId"] = None
+            raise
         result["doc"] = doc
         result["exit"] = exit_code
         return aid
@@ -1293,8 +1309,21 @@ def serve(root, payload, args):
                         ticket_args = (slug_a, ver_a, dtext)
                 def _write_action_ticket(aid):
                     if ticket_args is not None:
-                        write_ticket(root, ticket_args[0], ticket_args[1],
-                                     ticket_args[2], aid, order_action_id=aid)
+                        ticket_path = (
+                            root / "plans" / "execution" /
+                            (".import-approved-%s-v%d"
+                             % (ticket_args[0], ticket_args[1])))
+                        try:
+                            return write_ticket(
+                                root, ticket_args[0], ticket_args[1],
+                                ticket_args[2], aid, order_action_id=aid)
+                        except Exception:
+                            try:
+                                ticket_path.unlink()
+                            except OSError:
+                                pass
+                            raise
+                    return None
 
                 aid = accept_order(
                     lambda aid: document_from_body(body, payload,
@@ -2333,6 +2362,7 @@ def apply_gate_batch(root, payload, allow_single=False):
     awaiting approval it refuses unless allow_single — a single plan's sign-off
     belongs to the write-triggered gate or the researcher's Approve on the
     persistent board (which mints the same ticket)."""
+    retire_orphan_order_tickets(root)
     batch = []
     pending = 0
     exec_dir = root / "plans" / "execution"
@@ -2383,6 +2413,15 @@ def has_valid_ticket(root, slug, version, content):
     exp = doc.get("expiry")
     if isinstance(exp, (int, float)) and time.time() > exp:
         return False
+    action_id = doc.get("orderActionId")
+    if isinstance(action_id, str):
+        pending = root / "plans" / ".board-feedback.md"
+        try:
+            meta = parse_fence(pending.read_text(encoding="utf-8"))
+        except OSError:
+            return False
+        if not meta or meta.get("actionId") != action_id:
+            return False
     return doc.get("contentHash") == hashlib.sha256(
         normalize_plan(content).encode("utf-8")).hexdigest()
 
