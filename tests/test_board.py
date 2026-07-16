@@ -316,7 +316,7 @@ class TestShareHash(unittest.TestCase):
         b = [{"path": "a.md", "content": "changed"}]
         self.assertNotEqual(board.share_hash(a), board.share_hash(b))
 
-    def test_payload_files_covers_all_embedded_files(self):
+    def test_payload_files_pinned_cross_language_vector(self):
         payload = {"files": {
             "masterPlan": {"path": "plans/master-plan.md", "content": "m"},
             "decisionLog": {"path": "plans/decision-log.md", "content": "d"},
@@ -328,8 +328,25 @@ class TestShareHash(unittest.TestCase):
                      "version": 1, "iteration": 1},
                 ],
                 "draft": {"path": "plans/execution/01-x/.draft-v2.md", "content": "d2"},
+                "results": [{
+                    "manifestRaw": {"path": "plans/execution/01-x/results/r1/manifest.json",
+                                    "content": "{}"},
+                    "report": {"path": "plans/execution/01-x/results/r1/report.md",
+                               "content": "report"},
+                    "verdictRaw": {"path": "plans/execution/01-x/results/r1/verdict.json",
+                                   "content": "{}"},
+                    "scripts": [
+                        {"path": "plans/execution/01-x/results/r1/scripts/a.py", "content": "a"},
+                        {"path": "plans/execution/01-x/results/r1/scripts/b.R", "content": "b"},
+                    ],
+                    "publishedReport": {"path": "plans/reports/01-x-r1-report.md",
+                                        "content": "published"},
+                }],
             }],
             "reviews": [{"path": "plans/reviews/r.md", "content": "r"}],
+            "history": {"path": "plans/history.md", "content": "h"},
+            "archives": [{"path": "plans/archive/master-plan-2026-01-01.md",
+                          "content": "old"}],
         }}
         paths = [f["path"] for f in board.payload_files(payload)]
         self.assertEqual(sorted(paths), sorted([
@@ -337,7 +354,15 @@ class TestShareHash(unittest.TestCase):
             "plans/execution/01-x/v1.md",
             "plans/execution/01-x/v1-draft-1.md",
             "plans/execution/01-x/.draft-v2.md",
+            "plans/execution/01-x/results/r1/manifest.json",
+            "plans/execution/01-x/results/r1/report.md",
+            "plans/execution/01-x/results/r1/verdict.json",
+            "plans/execution/01-x/results/r1/scripts/a.py",
+            "plans/execution/01-x/results/r1/scripts/b.R",
+            "plans/reports/01-x-r1-report.md",
             "plans/reviews/r.md",
+            "plans/history.md",
+            "plans/archive/master-plan-2026-01-01.md",
         ]))
 
 
@@ -3076,6 +3101,25 @@ if __name__ == "__main__":
 
 
 class TestArtifactHeaders(unittest.TestCase):
+    def test_pinned_cross_language_inline_policy_vector(self):
+        # Mirrored in artifactDisplay.test.ts. SVG is the one intentional
+        # difference: the server permits sandboxed image rendering, while a
+        # top-level client link downloads it.
+        vectors = [
+            ("a.md", True, True), ("T.CSV", True, True),
+            ("a.tsv", True, True), ("a.txt", True, True),
+            ("a.log", True, True), ("a.json", True, True),
+            ("a.tex", True, True), ("a.png", True, True),
+            ("a.jpg", True, True), ("a.jpeg", True, True),
+            ("a.gif", True, True), ("a.webp", True, True),
+            ("a.pdf", True, True), ("a.svg", True, False),
+            ("a.html", False, False), ("a.xlsx", False, False),
+            ("a.xml", False, False), ("noext", False, False),
+        ]
+        for name, server_inline, _client_inline_safe in vectors:
+            self.assertEqual(board.artifact_headers(name)[1] == "inline",
+                             server_inline, name)
+
     def test_header_policy_by_extension(self):
         ah = board.artifact_headers
         self.assertEqual(ah("notes.md"), ("text/plain; charset=utf-8", "inline"))
