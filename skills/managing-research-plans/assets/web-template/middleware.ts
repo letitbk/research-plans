@@ -39,7 +39,7 @@ function readCookie(header: string | null, name: string): string | null {
   return null;
 }
 
-function verifyCookie(secret: string, value: string, now: number): boolean {
+export function verifyCookie(secret: string, value: string, now: number): boolean {
   const dot = value.lastIndexOf(".");
   if (dot < 0) return false;
   const payload = value.slice(0, dot);
@@ -54,7 +54,11 @@ function verifyCookie(secret: string, value: string, now: number): boolean {
   }
 }
 
-function isAuthed(env: Record<string, string | undefined>, headers: Headers, now: number): boolean {
+export function isAuthed(
+  env: Record<string, string | undefined>,
+  headers: Headers,
+  now: number,
+): boolean {
   const key = headers.get("x-board-key");
   if (key && env.BOARD_PULL_KEY && tseq(key, env.BOARD_PULL_KEY)) return true;
   const cookie = readCookie(headers.get("cookie"), COOKIE_NAME);
