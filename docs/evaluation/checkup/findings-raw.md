@@ -56,9 +56,12 @@ The adopt/reconcile/regeneration modes load on every plain single-capture `/resu
 The `codex`/`agy` review paths shell out with no `command -v` guard, unlike `pandoc` (`report.md:24`).
 → Add a `command -v codex`/`agy` preflight mirroring report.md's pandoc guard, so a missing CLI yields a graceful "not available" not a raw failure. Effort **S**. Risk-note: verify the exact failure mode in T8 (missing-tool arm) before wording the fix.
 
-**POR-2 · headless /init dead-ends** · `init.md` interview · S11 · **P1** · to-verify (T8 closes)
-Headless `AskUserQuestion` is auto-denied (`--permission-mode dontAsk`, per baseline.md), so a bare headless `/init` asks questions and exits with no artifacts (friction-log 1.1, still pending ruling).
-→ Detect headless + either seed-args guidance or a clear "nothing was created; re-run with …" message. Effort **M**. Risk-note: confirm the current behavior in the T8 clean-room before designing the fix.
+**POR-2 · headless /init dead-ends** · `init.md` interview · S11 · **P1** · **CONFIRMED (clean-room)**
+Verified live in the clean-room (friction-log Run 2.3): headless `/init` reports "AskUserQuestion isn't available… I'll ask directly in text," asks the interview questions, and **exits creating no `plans/` dir at all** — zero artifacts, no recovery signal. A scripted/walk-away new user gets nothing.
+→ Detect non-interactive + emit a clear "nothing was created; re-run non-interactively with seeded args" message (the plugin already detects the missing tool — it just doesn't surface recovery or create anything). Effort **M**.
+
+**CLEAN-ROOM (Run 2) positives / measurements** · — · read-confirmed
+Isolation works (a fresh `CLAUDE_CONFIG_DIR` strips all author setup — no CLAUDE.md/skills/plugins, only built-ins); the install lifecycle is frictionless (marketplace-add → install → commands available with no headless restart → update no-op → uninstall clean, exactly `0.18.0 @ 60eaede`); and the plugin's always-on token footprint measured **~750 tokens/session** empirically (vs the 524 static estimate — bytes/4 is a ~40%-low floor). Anchors TOK-1.
 
 ---
 
