@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.0] - 2026-07-16
+
+A navigation and hardening release: the board gains a global Outline + Files sidebar, and a comprehensive plugin checkup fixed a security bug, made collaborator commenting safe under retries, cut per-session token overhead, and shored up keyboard accessibility.
+
+### Added
+- **Board Outline + Files sidebar.** One global, persistent, collapsible left panel with two sub-tabs: an **Outline** that adapts per view (a heading table of contents on document readers, a semantic outline on structured views like the Tracker and Timeline) and a **Files** navigator over your plans, results, and reports. Keyboard-navigable.
+- **Keyboard access across the board.** The annotation composer, line-comment ranges, and the sidebar are now reachable without a mouse.
+
+### Changed
+- **Lighter `/board` and `/results`.** The web-publishing runbook and the results adopt/reconcile modes moved into on-demand reference files, so a plain board open or a single-capture `/results` no longer loads instruction text they don't need.
+- **Collaborator commenting is retry-safe.** Hosted comment posting is now idempotent — a lost-response retry with the same id succeeds instead of duplicating a comment or being rejected, and it can never overwrite a different comment.
+- **Headless `/init` recovers gracefully.** Run non-interactively without answers, it now prints a complete re-run form instead of asking questions and exiting with nothing created.
+
+### Fixed
+- **Comment-wipe CSRF.** `/api/clear` ran its destructive delete-all on any HTTP method, so a top-level GET carried the session cookie and let an attacker page erase every collaborator comment. It now requires POST.
+- **Every `--pull` re-offered the previous batch.** The web-comment inbox is cleaned after routing, so comments you have already pulled and handled are no longer re-presented on the next pull.
+- **Native dialogs on the board.** The feedback copy-fallback used browser `alert`/`prompt`; it now uses an in-page selectable text box.
+- **Sign-off order and ticket robustness.** A new order is refused while an un-acknowledged one is pending, the pulled-comment state is written atomically, and each approval ticket is bound to its order — so an interrupted board session can no longer strand an order or leave an orphan ticket.
+- **Board responsiveness and dark mode.** The header wraps, the sidebar stacks by viewport width (no squeeze at high zoom), wide tables scroll, and dark-mode warning contrast is restored.
+- **Documentation and coherence drift.** The board-lifecycle description, a stale code comment, two "what it creates" omissions, a byte-vs-character size cap, and several silently-swallowed errors.
+
 ## [0.18.0] - 2026-07-14
 
 Plan review gets shorter and moves into the plan itself: a five-number rubric replaces the old pass/fail-plus-grade, each plan version's score shows in the plan header (the Reviews tab is gone), and plans read as one narrative you can collapse to taste.
