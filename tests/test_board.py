@@ -2,6 +2,7 @@
     python3 -m unittest tests.test_board -v
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -2183,6 +2184,61 @@ class TestSignoffAction(unittest.TestCase):
             self.draft.read_text(encoding="utf-8")).encode("utf-8")).hexdigest()
         self.assertEqual(tdoc["contentHash"], want)
         self.assertEqual(tdoc["batchId"], body["actionId"])
+
+    def test_ticket_write_failure_never_leaves_an_order(self):
+        url, info, t = serve_in_thread(self.root, timeout=1)
+        original_write_ticket = board.write_ticket
+
+        def fail_ticket(*args, **kwargs):
+            raise OSError("simulated ticket failure")
+
+        board.write_ticket = fail_ticket
+        try:
+            with self.assertRaises((http.client.RemoteDisconnected,
+                                    urllib.error.URLError,
+                                    ConnectionResetError)):
+                http_json(url, "/api/feedback",
+                          body=self._signoff_body(info["boardToken"]))
+        finally:
+            board.write_ticket = original_write_ticket
+        t.join(timeout=2)
+        self.assertFalse(self.ticket.exists())
+        self.assertFalse((self.root / "plans" / ".board-feedback.md").exists())
+
+    def test_order_replace_failure_leaves_recoverable_orphan_ticket(self):
+        url, info, t = serve_in_thread(self.root, timeout=1)
+        original_replace = board.os.replace
+        pending = self.root / "plans" / ".board-feedback.md"
+
+        def fail_order_replace(src, dst):
+            if Path(dst) == pending:
+                raise OSError("simulated order replace failure")
+            return original_replace(src, dst)
+
+        board.os.replace = fail_order_replace
+        try:
+            with self.assertRaises((http.client.RemoteDisconnected,
+                                    urllib.error.URLError,
+                                    ConnectionResetError)):
+                http_json(url, "/api/feedback",
+                          body=self._signoff_body(info["boardToken"]))
+        finally:
+            board.os.replace = original_replace
+        t.join(timeout=2)
+        self.assertFalse(pending.exists())
+        self.assertTrue(self.ticket.exists())
+        self.assertIn("orderActionId", json.loads(
+            self.ticket.read_text(encoding="utf-8")))
+
+        batch_ticket = board.write_ticket(
+            self.root, "02-other", 1,
+            (self.root / "plans" / "execution" / "02-other" / "v1.md")
+            .read_text(encoding="utf-8"),
+            "batch-only")
+        retired = board.retire_orphan_order_tickets(self.root)
+        self.assertEqual(retired, [self.ticket])
+        self.assertFalse(self.ticket.exists())
+        self.assertTrue(batch_ticket.exists())
 
     def test_stale_draft_rejected_exit_4_no_ticket(self):
         proc, url = spawn_board(self.root, "--timeout", "15")

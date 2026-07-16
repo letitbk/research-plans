@@ -1071,6 +1071,7 @@ def serve(root, payload, args):
     plans_dir = root / "plans"
     ensure_gitignore(plans_dir)
     lock = acquire_lock(plans_dir, args.force)
+    retire_orphan_order_tickets(root)
 
     gate_mode = payload.get("gate") is not None
     batch_mode = payload.get("gateBatch") is not None
@@ -1102,10 +1103,11 @@ def serve(root, payload, args):
     # and lose an update (ThreadingHTTPServer).
     profile_lock = threading.Lock()
 
-    def accept_order(build_doc, exit_code, write_file):
+    def accept_order(build_doc, exit_code, write_file, before_commit=None):
         """Single-slot order acceptance: reserve the id, build the document,
-        write it durably (atomic replace), stage the result. Returns the
-        actionId, or None when this round already accepted an order."""
+        run any ticket pre-commit, write the order durably (atomic replace),
+        then stage the result. Returns the actionId, or None when this round
+        already accepted an order."""
         with slot_lock:
             if slot["actionId"] is not None:
                 return None
@@ -1114,8 +1116,12 @@ def serve(root, payload, args):
             slot["actionId"] = uuid.uuid4().hex
         aid = slot["actionId"]
         doc = build_doc(aid)
+        if before_commit is not None:
+            before_commit(aid)
         if write_file:
-            # File FIRST (survives a dead parent bash call), then unblock.
+            # Authorization ticket first (when required), then the durable
+            # order, then unblock. This never exposes an order without the
+            # ticket needed to route it.
             tmp = plans_dir / ".board-feedback.md.tmp"
             tmp.write_text(doc, encoding="utf-8")
             os.replace(tmp, plans_dir / ".board-feedback.md")
@@ -1286,11 +1292,18 @@ def serve(root, payload, args):
                             self._json(400, {"error": "trailer-in-draft"})
                             return
                         ticket_args = (slug_a, ver_a, dtext)
+                def _write_action_ticket(aid):
+                    if ticket_args is not None:
+                        write_ticket(root, ticket_args[0], ticket_args[1],
+                                     ticket_args[2], aid, order_action_id=aid)
+
                 aid = accept_order(
                     lambda aid: document_from_body(body, payload,
                                                    action=validated,
                                                    action_id=aid),
-                    0, True)
+                    0, True,
+                    before_commit=_write_action_ticket
+                    if ticket_args is not None else None)
                 if aid is pending_order:
                     self._json(409, {"error": "pending-order",
                                      "message": pending_order_message})
@@ -1299,9 +1312,6 @@ def serve(root, payload, args):
                     self._json(409, {"error": "already-accepted",
                                      "actionId": slot["actionId"]})
                     return
-                if ticket_args is not None:
-                    write_ticket(root, ticket_args[0], ticket_args[1],
-                                 ticket_args[2], aid)
                 self._json(200, {"ok": True, "actionId": aid,
                                  "bootId": boot_id, "projectId": proj_id})
                 done.set()
@@ -2251,7 +2261,7 @@ def collect_file(root, path):
     return inspect_feedback_document(root, doc)
 
 
-def write_ticket(root, slug, version, content, batch_id):
+def write_ticket(root, slug, version, content, batch_id, order_action_id=None):
     """Write a batch-approval ticket that signoff_gate.check_ticket accepts.
     Hashed over the NORMALIZED draft (sign-off-trailer-invariant), so the later
     signed vN.md write matches and the gate allows it without reopening a browser."""
@@ -2265,9 +2275,55 @@ def write_ticket(root, slug, version, content, batch_id):
         "approvedAt": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "expiry": time.time() + TICKET_TTL,
     }
+    if order_action_id is not None:
+        doc["orderActionId"] = order_action_id
     tp = root / "plans" / "execution" / (".import-approved-%s-v%d" % (slug, version))
     tp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
     return tp
+
+
+def retire_orphan_order_tickets(root):
+    """Retire live-order tickets whose durable order never committed.
+
+    Batch approvals have no orderActionId and are never touched. A bound ticket
+    stays valid while its matching pending order exists, and is inert once the
+    signed version exists. Otherwise it is an orphan from the ticket-first
+    crash window and must force a fresh researcher approval.
+    """
+    pending_action_id = None
+    pending = root / "plans" / ".board-feedback.md"
+    if pending.is_file():
+        try:
+            meta = parse_fence(pending.read_text(encoding="utf-8"))
+            pending_action_id = meta.get("actionId") if meta else None
+        except OSError:
+            pass
+
+    retired = []
+    exec_dir = root / "plans" / "execution"
+    if not exec_dir.is_dir():
+        return retired
+    for ticket in sorted(exec_dir.glob(".import-approved-*-v*")):
+        try:
+            doc = json.loads(ticket.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        action_id = doc.get("orderActionId")
+        slug = doc.get("slug")
+        version = doc.get("version")
+        if not isinstance(action_id, str):
+            continue
+        if pending_action_id == action_id:
+            continue
+        if (isinstance(slug, str) and isinstance(version, int)
+                and (exec_dir / slug / ("v%d.md" % version)).is_file()):
+            continue
+        try:
+            ticket.unlink()
+        except FileNotFoundError:
+            continue
+        retired.append(ticket)
+    return retired
 
 
 def apply_gate_batch(root, payload, allow_single=False):
