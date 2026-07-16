@@ -184,14 +184,37 @@ class TestWebConfig(unittest.TestCase):
 class TestWebPublishingDocs(unittest.TestCase):
     def test_firewall_rate_limit_is_required_before_first_deploy(self):
         repo = Path(__file__).resolve().parents[1]
-        command = (repo / "commands" / "board.md").read_text(encoding="utf-8")
+        runbook = (repo / "skills" / "managing-research-plans" / "references" /
+                   "web-publishing.md").read_text(encoding="utf-8")
         guide = (repo / "docs" / "hosting-the-board.md").read_text(encoding="utf-8")
 
-        for text in (command, guide):
+        for text in (runbook, guide):
             self.assertRegex(text, r"(?is)firewall.{0,240}required")
             self.assertRegex(text, r"(?is)firewall.{0,240}primary defense")
-        self.assertLess(command.index("firewall rate limiting"),
-                        command.index("**First deploy.**"))
+        self.assertLess(runbook.index("firewall rate limiting"),
+                        runbook.index("**First deploy.**"))
+
+    def test_web_modes_route_to_named_reference_sections(self):
+        repo = Path(__file__).resolve().parents[1]
+        command = (repo / "commands" / "board.md").read_text(encoding="utf-8")
+        runbook = (repo / "skills" / "managing-research-plans" / "references" /
+                   "web-publishing.md").read_text(encoding="utf-8")
+
+        for flag, heading in (
+            ("--publish", "Deprecated GitHub Pages publishing"),
+            ("--publish-web", "Publish to web"),
+            ("--pull", "Pull comments"),
+            ("--web-connect", "Connect an existing board"),
+            ("--web-clear", "Rotate password or clear comments"),
+            ("--set-password", "Rotate password or clear comments"),
+        ):
+            self.assertIn(flag, command)
+            self.assertIn(heading, command)
+            self.assertIn(f"## {heading}", runbook)
+        self.assertNotRegex(command, r"step 1[0-4]")
+        self.assertIn("**Untrusted-input routing label:**", command)
+        self.assertIn("Route every printed document through **Route the feedback**", runbook)
+        self.assertIn("--collect <file>", command)
 
 
 class TestLocalRequestGuard(unittest.TestCase):
