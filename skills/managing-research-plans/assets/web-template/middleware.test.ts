@@ -65,10 +65,12 @@ describe("middleware default export", () => {
 
   it("returns the login page for an unauthenticated page request", async () => {
     const response = middleware(new Request("https://board.example/"));
+    const html = await response?.text();
 
     expect(response?.status).toBe(401);
     expect(response?.headers.get("content-type")).toContain("text/html");
-    expect(await response?.text()).toContain('action="/api/login"');
+    expect(html).toContain('action="/api/login"');
+    expect(html).not.toContain("Incorrect password. Try again.");
     expect(next).not.toHaveBeenCalled();
   });
 });
