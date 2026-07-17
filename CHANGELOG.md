@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.19.1] - 2026-07-17
 
 ### Fixed
 - Gate approve/deny no longer white-screens the board tab (hook-order crash present since v0.14.0); an ErrorBoundary backstops any future render error.
