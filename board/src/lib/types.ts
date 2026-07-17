@@ -117,6 +117,8 @@ export interface GateBatchEntry {
   proposedVersion: number;
   path: string;
   content: string;
+  contentHash: string;
+  ticketed?: boolean;
 }
 
 export interface ExecutionPlanGroup {
