@@ -2,7 +2,13 @@
 // the sticky header so the measured panel offset adapts to it.
 import type { ConnPhase } from "../lib/reconnect";
 
-export default function ConnBanner({ phase }: { phase: ConnPhase }) {
+export default function ConnBanner({
+  phase,
+  gateEnded = false,
+}: {
+  phase: ConnPhase;
+  gateEnded?: boolean;
+}) {
   if (phase.kind === "accepted" || phase.kind === "applying") {
     return (
       <div className="border-t border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950 px-5 py-1.5 text-center text-xs text-sky-800 dark:text-sky-300">
@@ -24,8 +30,9 @@ export default function ConnBanner({ phase }: { phase: ConnPhase }) {
   if (phase.kind === "sleeping") {
     return (
       <div className="border-t border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800 px-5 py-1.5 text-center text-xs text-stone-600 dark:text-stone-300">
-        Board sleeping — run /research-plans:board in your session to wake it.
-        Your drafts are safe.
+        {gateEnded
+          ? "This sign-off gate has ended — your draft is saved. Approve it from the board: run /research-plans:board in your session."
+          : "Board sleeping — run /research-plans:board in your session to wake it. Your drafts are safe."}
       </div>
     );
   }

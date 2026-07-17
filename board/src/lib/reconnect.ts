@@ -57,6 +57,21 @@ export function shouldReload(
   return last !== null && health.bootId !== last;
 }
 
+export type PostRecovery = "reload" | "same-boot" | "server-gone";
+
+/** Classify a failed POST from one health probe. "reload": a NEW boot of our
+ * project answered — the tab's per-boot token is stale and a reload gets a
+ * fresh one. "same-boot": our server is alive, so the failure isn't staleness.
+ * "server-gone": nothing (or a foreign project) answered. */
+export function classifyPostFailure(
+  s: ConnState,
+  health: { bootId: string; projectId: string } | null,
+): PostRecovery {
+  if (!health || health.projectId !== s.projectId) return "server-gone";
+  const last = lastBootOf(s.phase);
+  return last !== null && health.bootId !== last ? "reload" : "same-boot";
+}
+
 export function reduceConn(s: ConnState, e: ConnEvent): ConnState {
   const p = s.phase;
   switch (e.type) {

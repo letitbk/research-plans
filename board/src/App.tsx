@@ -29,6 +29,7 @@ import FeedbackPanel, { type SubmitState } from "./components/FeedbackPanel";
 import { useHeaderOffset, useMediaQuery } from "./lib/layoutHooks";
 import ConnBanner from "./components/ConnBanner";
 import {
+  classifyPostFailure,
   initialConn,
   reduceConn,
   shouldReload,
@@ -216,6 +217,7 @@ export default function App({ data }: { data: BoardData }) {
     gate !== null || (data.seededAnnotations?.length ?? 0) > 0,
   );
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [postFailure, setPostFailure] = useState<"server-gone" | "generic" | null>(null);
   const [copyFallbackState, setCopyFallbackState] = useState<{
     text: string;
     copied: boolean | null;
@@ -508,8 +510,7 @@ export default function App({ data }: { data: BoardData }) {
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -554,8 +555,7 @@ export default function App({ data }: { data: BoardData }) {
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -587,7 +587,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("approved");
     } catch {
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -608,7 +608,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("denied");
     } catch {
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -653,8 +653,7 @@ export default function App({ data }: { data: BoardData }) {
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -701,8 +700,7 @@ export default function App({ data }: { data: BoardData }) {
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -748,8 +746,7 @@ export default function App({ data }: { data: BoardData }) {
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -789,6 +786,10 @@ export default function App({ data }: { data: BoardData }) {
   const connRef = useRef(conn);
   connRef.current = conn;
   const dispatchConn = (e: ConnEvent) => setConn((st) => reduceConn(st, e));
+  // Every new send starts clean: recovery notice and (Task 5) close-arming reset.
+  useEffect(() => {
+    if (submitState === "sending") setPostFailure(null);
+  }, [submitState]);
   useEffect(() => {
     if (!canPost) return;
     const t = setInterval(async () => {
@@ -853,6 +854,26 @@ export default function App({ data }: { data: BoardData }) {
       return false;
     }
     throw new Error(`HTTP ${res.status}`);
+  };
+  // One shared failure path (spec H2): probe health once; a new boot means the
+  // tab's token is stale — reload it; a dead server gets honest copy instead
+  // of a generic "failed" (the order may already be durably recorded).
+  const recoverFailedPost = async () => {
+    let health: { bootId: string; projectId: string } | null = null;
+    try {
+      const r = await fetch("/api/health", { cache: "no-store" });
+      if (r.ok) health = (await r.json()) as { bootId: string; projectId: string };
+    } catch {
+      /* server gone */
+    }
+    const verdict = classifyPostFailure(connRef.current, health);
+    if (verdict === "reload") {
+      location.reload();
+      return;
+    }
+    setPostFailure(verdict === "server-gone" ? "server-gone" : "generic");
+    dispatchConn({ type: "post-failed" });
+    setSubmitState("failed");
   };
   const guardConn = <A extends unknown[]>(fn: (...a: A) => void) =>
     (...a: A) => {
@@ -1170,7 +1191,14 @@ export default function App({ data }: { data: BoardData }) {
             Reading works here; commenting works best on a computer
           </div>
         )}
-        {canPost && <ConnBanner phase={conn.phase} />}
+        {canPost && <ConnBanner phase={conn.phase} gateEnded={Boolean(gate)} />}
+        {canPost && postFailure === "server-gone" && (
+          <div className="border-t border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-5 py-1.5 text-center text-xs text-amber-800 dark:text-amber-300">
+            {gate
+              ? "This sign-off gate has ended. If you clicked Approve it may already be recorded — check your Claude session. Your draft is saved either way; approve it from the board with /research-plans:board."
+              : "The board server isn't running — your submission may already have reached your session; otherwise reopen with /research-plans:board."}
+          </div>
+        )}
       </header>
 
       <div className="mx-auto flex w-full max-w-[1440px]">

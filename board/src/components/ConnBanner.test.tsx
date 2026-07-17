@@ -38,4 +38,9 @@ describe("ConnBanner", () => {
     expect(screen.getByText(/Board sleeping/)).toBeTruthy();
     expect(screen.getByText(/drafts are safe/)).toBeTruthy();
   });
+
+  it("shows gate recovery copy when sleeping with gateEnded", () => {
+    render(<ConnBanner phase={{ kind: "sleeping", lastBootId: null }} gateEnded />);
+    expect(screen.getByText(/your draft is saved/i)).toBeTruthy();
+  });
 });
