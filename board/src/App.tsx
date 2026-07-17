@@ -784,52 +784,6 @@ export default function App({ data }: { data: BoardData }) {
     }
   };
 
-  if (submitState === "approved" || submitState === "denied") {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
-        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
-          <div className="text-3xl">
-            {submitState === "approved" ? "✓" : "✎"}
-          </div>
-          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
-            {submitState === "approved"
-              ? "Approved — the version is being written"
-              : "Changes requested — return to your session"}
-          </h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            {submitState === "approved"
-              ? `${gate?.component} v${gate?.proposedVersion} will land exactly as shown here, signed.`
-              : "Claude received your feedback and will revise the draft; the gate reopens on the next sign-off attempt."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (submitState === "sent" && !canPost) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
-        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
-          <div className="text-3xl">✓</div>
-          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
-            Feedback sent
-          </h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            Return to your Claude Code session — it received your{" "}
-            {annotations.length} item{annotations.length === 1 ? "" : "s"} and
-            will walk through them with you.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // ---- Reconnect (control surface, spec §4): health poll + reload machine.
   const [conn, setConn] = useState(() => initialConn(data.projectId ?? ""));
   const connRef = useRef(conn);
@@ -1014,6 +968,52 @@ export default function App({ data }: { data: BoardData }) {
     onCopyFallback: copyFallback,
     onCardClick: openAnnotation,
   };
+
+  if (submitState === "approved" || submitState === "denied") {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
+          <div className="text-3xl">
+            {submitState === "approved" ? "✓" : "✎"}
+          </div>
+          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
+            {submitState === "approved"
+              ? "Approved — the version is being written"
+              : "Changes requested — return to your session"}
+          </h1>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+            {submitState === "approved"
+              ? `${gate?.component} v${gate?.proposedVersion} will land exactly as shown here, signed.`
+              : "Claude received your feedback and will revise the draft; the gate reopens on the next sign-off attempt."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitState === "sent" && !canPost) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
+          <div className="text-3xl">✓</div>
+          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
+            Feedback sent
+          </h1>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+            Return to your Claude Code session — it received your{" "}
+            {annotations.length} item{annotations.length === 1 ? "" : "s"} and
+            will walk through them with you.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950">
