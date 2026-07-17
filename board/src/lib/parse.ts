@@ -21,8 +21,15 @@ const STATUSES: TrackerStatus[] = [
   "in progress",
   "done",
   "done (verified)",
+  "done (validated)",
+  "done (unvalidated)",
+  "done (retrofit)",
   "dropped",
 ];
+
+export function isDoneStatus(status: TrackerStatus): boolean {
+  return status === "done" || status.startsWith("done (");
+}
 
 function sectionBody(md: string, heading: string): string | null {
   // Returns the text between `## <heading>` and the next `## ` (or EOF).

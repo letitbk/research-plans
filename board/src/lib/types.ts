@@ -292,6 +292,9 @@ export type TrackerStatus =
   | "in progress"
   | "done"
   | "done (verified)"
+  | "done (validated)"
+  | "done (unvalidated)"
+  | "done (retrofit)"
   | "dropped"
   | "unknown";
 
