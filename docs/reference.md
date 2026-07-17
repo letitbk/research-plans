@@ -20,7 +20,8 @@ Complete technical reference. For what the plugin is and why you'd use it, start
 | `/research-plans:adopt` | Retrospectively decompose already-done work into components, each with a full retrospective plan (reviewed in one board batch); reconstruct pre-adoption history. |
 | `/research-plans:renew` | Change the project's direction: archive the master plan, write a fresh one over the existing work. Numbering continues, carried components keep their plans and results, the rest stay browsable in the archive. Preferred over adopt when starting the workflow in an exploratory repo you want to take somewhere new. |
 | `/research-plans:plan` | Scope the next component and co-author its execution plan. |
-| `/research-plans:sync` | Post-execution checkpoint. Update the tracker, catch unlogged decisions, version the plan if execution deviated. |
+| `/research-plans:execute` | Execute one or more signed plans. One prompt sets timing, model, and report preference; then capture, validation, reporting, bookkeeping, and next steps run as one loop. |
+| `/research-plans:sync` | Manual recovery checkpoint for out-of-loop work, crashed sessions, hosted comments, and missed logging. Update the tracker, catch unlogged decisions, and version the plan if execution deviated. |
 | `/research-plans:review` | Score the plan against the five-channel rubric (goal & success, decisions & reasons, steps, validation, boundaries; 0–3 each). Reports a profile, the biggest leak, and the forks to fix — a diagnosis, not a pass/fail. Includes a split assessment. |
 | `/research-plans:models` | View or edit the per-stage model profile; regenerates the project's `rp-*` review agents. |
 | `/research-plans:results` | Capture a versioned results bundle for a component — brief report, figure/table snapshots, key numbers, script snapshots, and an automatic plan-vs-execution validation. `--adopt` brings pre-existing artifacts under verification. |
@@ -28,6 +29,8 @@ Complete technical reference. For what the plugin is and why you'd use it, start
 | `/research-plans:board` | Open the board: a browser dashboard over everything, with drift flags, live annotation, a shareable snapshot, or `--publish-web` to a private, password-protected link for collaborators. |
 
 Everything is opt-in. The plugin does nothing in projects you have not initialized.
+
+The primary path has four stops: plan → review room → execute → tail. `/research-plans:plan` ends with the scored draft in the board's review room. Approval offers one `/research-plans:execute` prompt; after that, the tail captures and validates each component, reports when requested, updates the tracker and log, suggests one commit, opens one view-only board, and proposes what comes next. `/research-plans:sync` remains available for work that happened outside this loop or needs recovery.
 
 ## The board
 
@@ -65,7 +68,7 @@ For collaborators who only have a browser, `/research-plans:board --publish-web`
 
 ## Results
 
-Plans say what the work will do; results bundles show what it did. `/research-plans:results` captures a **versioned, immutable bundle** per component at `plans/execution/<component>/results/rN/`: a brief agent-drafted report, snapshot copies of the figures and tables (sha256-matched against their sources; files over 5 MB are recorded by path + checksum instead of copied), the exact scripts that produced them, and the key numbers as metric tiles. Capture goes through a staging directory and an atomic rename, so a bundle either exists complete and validated or not at all. Re-running an analysis can never silently change the captured record — a redo is the next `rN`.
+Plans say what the work will do; results bundles show what it did. The execution loop captures them automatically as agent-curated, `curatedBy`-labeled bundles; direct `/research-plans:results` and `/sync` captures retain the researcher interview. Each path creates a **versioned, immutable bundle** per component at `plans/execution/<component>/results/rN/`: a brief agent-drafted report, snapshot copies of the figures and tables (sha256-matched against their sources; files over 5 MB are recorded by path + checksum instead of copied), the exact scripts that produced them, and the key numbers as metric tiles. Capture goes through a staging directory and an atomic rename, so a bundle either exists complete or not at all. Re-running an analysis can never silently change the captured record — a redo is the next `rN`.
 
 Bundles are journal-first: the project's CLAUDE.md carries output conventions with a target journal, so analysis deliverables are journal-ready figures (vector PDF + PNG) and typeset tables (a `.png` render with its `.tex` source and estimates CSV attached) — a CSV is click-to-open data, never dumped inline on the board. Every planned capture also runs an automatic **validation**: an independent subagent compares the signed plan against the staged scripts, artifacts, and decision log, and its per-step result (conforms / conforms-with-amendments / deviations-found) is sealed into the bundle and rendered on the board. Capture also seals a mechanical **integrity check** into the manifest — artifact checksums match, references resolve, and every substantive finding is sourced to an artifact. Both are advisory, never a gate — an unrecorded deviation is flagged, and the remedy is a plan revision.
 
@@ -81,7 +84,7 @@ Different stages deserve different models: planning is where quality compounds (
 
 Two mechanisms, named in the profile's mechanism column:
 
-- **nudge** — interactive stages (`/plan`, `/sync`, execution) print one line when your session model differs from the profile's, suggesting `/model <model>` (switching mid-conversation is safe — nothing is lost); you decide.
+- **nudge** — interactive stages (`/plan`, `/sync`, execution) print one line when your session model differs from the profile's, suggesting `/model <model>` (switching mid-conversation is safe — nothing is lost). Plan and sync nudges are advisory; the model selected in the `/execute` prompt is an explicit choice, so the loop waits for that switch.
 - **agent** — delegated stages (plan review, results validation, the board's subagent reviews) run in generated project agents at `.claude/agents/rp-*.md` (committed, ownership-marked: `/models` never overwrites a same-named agent you wrote yourself), whose frontmatter pins the profile's model and effort. The pin is a request, not a guarantee — an organization model allowlist, `CLAUDE_CODE_SUBAGENT_MODEL`, or a per-invocation override supersedes it silently.
 
 Projects without a profile behave exactly as before. Model profiles need a current Claude Code (tested on Claude Code 2.1.206) for agent `effort:` frontmatter — older builds run the agents on their default model resolution and ignore the effort request.
@@ -186,7 +189,7 @@ If your Claude Code build prefers it, the equivalent fallback is to check out th
 
 ## Developing the board
 
-The board UI is a React app in `board/`, built once into a single committed HTML template at `skills/managing-research-plans/assets/board-template.html`. The core plan-execute-sync workflow needs only `python3` — `board.py` just injects data into the prebuilt template; web sharing (`--publish-web` and friends) additionally needs Node.js, for the Vercel CLI. Changing the UI itself also needs Node, to rebuild that template:
+The board UI is a React app in `board/`, built once into a single committed HTML template at `skills/managing-research-plans/assets/board-template.html`. The core plan-review-execute-tail workflow needs only `python3` — `board.py` just injects data into the prebuilt template; web sharing (`--publish-web` and friends) additionally needs Node.js, for the Vercel CLI. Changing the UI itself also needs Node, to rebuild that template:
 
 ```
 cd board

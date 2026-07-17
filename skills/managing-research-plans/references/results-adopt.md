@@ -23,7 +23,7 @@ Present the worklist and let the researcher choose whether to walk all, pick som
 
 After `/research-plans:adopt`, every done component has a retrospective plan, so its backfilled bundles are retrofit, not planned. The plan links them through `planVersion` without claiming to have governed them. Report a component with no qualifying evidence as such and, if the researcher agrees, add a one-line tracker note. The only zero-artifact bundle that can be finalized is a retrospective report whose figures cannot be reproduced, and only after explicit confirmation under [Summary-only bundles](#summary-only-bundles).
 
-Finish by opening one board session for a verdict pass over everything captured. Never capture all components silently in bulk. The per-component interview is the verification; skipping it is how plan theater starts.
+Finish by opening one board session for view-only review over everything captured. Never capture all components silently in bulk. In a manual capture the per-component interview is the verification; in the execution loop the verification is the mechanical validation pass plus the researcher's Reopen right over an agent-curated, `curatedBy`-labeled bundle. Silent bulk writes are how plan theater starts — both modes stay visible and evidence-based.
 
 ## Regeneration and run recipes
 
