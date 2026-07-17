@@ -25,10 +25,12 @@ import {
   partitionComments,
 } from "./lib/hostedComments";
 import { liveDraftKey, loadDrafts, clearSubmitted } from "./lib/drafts";
+import { autoCloseKey, useAutoClose } from "./lib/autoClose";
 import FeedbackPanel, { type SubmitState } from "./components/FeedbackPanel";
 import { useHeaderOffset, useMediaQuery } from "./lib/layoutHooks";
 import ConnBanner from "./components/ConnBanner";
 import {
+  classifyPostFailure,
   initialConn,
   reduceConn,
   shouldReload,
@@ -36,7 +38,7 @@ import {
   type ConnEvent,
 } from "./lib/reconnect";
 import { navTargetFor, type NavTarget } from "./lib/navTarget";
-import { buildFilesTree } from "./lib/filesTree";
+import { buildFilesTree, type ActiveFileRef } from "./lib/filesTree";
 import type { OutlineEntry } from "./lib/outline";
 import type { ReopenRequest, SignoffRequest } from "./lib/types";
 import type {
@@ -63,6 +65,45 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "timeline", label: "Timeline" },
   { id: "models", label: "Models" },
 ];
+
+function AutoCloseNotice({
+  state,
+  cancel,
+  enable,
+}: {
+  state: import("./lib/autoClose").AutoClosePhase;
+  cancel: () => void;
+  enable: () => void;
+}) {
+  if (state.phase === "counting") {
+    return (
+      <p className="mt-3 text-xs text-stone-500 dark:text-stone-400">
+        Closing this tab in {state.remaining}s…{" "}
+        <button className="underline" onClick={cancel}>
+          keep open
+        </button>
+      </p>
+    );
+  }
+  if (state.phase === "closeFailed") {
+    return (
+      <p className="mt-3 text-xs text-stone-500 dark:text-stone-400">
+        Couldn't close this tab automatically — you can close it now.
+      </p>
+    );
+  }
+  if (state.phase === "cancelled") {
+    return (
+      <p className="mt-3 text-xs text-stone-500 dark:text-stone-400">
+        Auto-close is off for this project.{" "}
+        <button className="underline" onClick={enable}>
+          Re-enable
+        </button>
+      </p>
+    );
+  }
+  return null;
+}
 
 let idCounter = 0;
 function nextId(): string {
@@ -216,6 +257,14 @@ export default function App({ data }: { data: BoardData }) {
     gate !== null || (data.seededAnnotations?.length ?? 0) > 0,
   );
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [postFailure, setPostFailure] = useState<"server-gone" | "generic" | null>(null);
+  const [closeArmed, setCloseArmed] = useState(false);
+  const autoClose = useAutoClose(
+    submitState === "approved" ||
+      submitState === "denied" ||
+      (canPost && submitState === "sent" && closeArmed),
+    autoCloseKey(data.projectId ?? data.project.name),
+  );
   const [copyFallbackState, setCopyFallbackState] = useState<{
     text: string;
     copied: boolean | null;
@@ -505,11 +554,11 @@ export default function App({ data }: { data: BoardData }) {
         return;
       }
       setSubmitState("sent");
+      setCloseArmed(true);
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -554,8 +603,7 @@ export default function App({ data }: { data: BoardData }) {
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -587,7 +635,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("approved");
     } catch {
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -608,7 +656,7 @@ export default function App({ data }: { data: BoardData }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("denied");
     } catch {
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -653,8 +701,7 @@ export default function App({ data }: { data: BoardData }) {
       setPendingVerdict(null);
       clearSentDrafts(annotations.map((a) => a.id));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -698,11 +745,11 @@ export default function App({ data }: { data: BoardData }) {
         return;
       }
       setSubmitState("sent");
+      setCloseArmed(true);
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -748,8 +795,7 @@ export default function App({ data }: { data: BoardData }) {
       clearSentDrafts(scoped.map((a) => a.id));
       setAnnotations((prev) => prev.filter((a) => !scoped.includes(a)));
     } catch {
-      dispatchConn({ type: "post-failed" });
-      setSubmitState("failed");
+      await recoverFailedPost();
     }
   };
 
@@ -784,57 +830,18 @@ export default function App({ data }: { data: BoardData }) {
     }
   };
 
-  if (submitState === "approved" || submitState === "denied") {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
-        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
-          <div className="text-3xl">
-            {submitState === "approved" ? "✓" : "✎"}
-          </div>
-          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
-            {submitState === "approved"
-              ? "Approved — the version is being written"
-              : "Changes requested — return to your session"}
-          </h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            {submitState === "approved"
-              ? `${gate?.component} v${gate?.proposedVersion} will land exactly as shown here, signed.`
-              : "Claude received your feedback and will revise the draft; the gate reopens on the next sign-off attempt."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (submitState === "sent" && !canPost) {
-    return (
-      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
-        <div className="absolute right-4 top-4">
-          <ThemeToggle />
-        </div>
-        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
-          <div className="text-3xl">✓</div>
-          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
-            Feedback sent
-          </h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            Return to your Claude Code session — it received your{" "}
-            {annotations.length} item{annotations.length === 1 ? "" : "s"} and
-            will walk through them with you.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // ---- Reconnect (control surface, spec §4): health poll + reload machine.
-  const [conn, setConn] = useState(() => initialConn(data.projectId ?? ""));
+  const [conn, setConn] = useState(() => initialConn(data.projectId ?? "", data.bootId ?? null));
   const connRef = useRef(conn);
   connRef.current = conn;
   const dispatchConn = (e: ConnEvent) => setConn((st) => reduceConn(st, e));
+  // Every new send starts clean: recovery notice and (Task 5) close-arming reset.
+  useEffect(() => {
+    if (submitState === "sending") {
+      setPostFailure(null);
+      setCloseArmed(false);
+    }
+  }, [submitState]);
   useEffect(() => {
     if (!canPost) return;
     const t = setInterval(async () => {
@@ -900,6 +907,26 @@ export default function App({ data }: { data: BoardData }) {
     }
     throw new Error(`HTTP ${res.status}`);
   };
+  // One shared failure path (spec H2): probe health once; a new boot means the
+  // tab's token is stale — reload it; a dead server gets honest copy instead
+  // of a generic "failed" (the order may already be durably recorded).
+  const recoverFailedPost = async () => {
+    let health: { bootId: string; projectId: string } | null = null;
+    try {
+      const r = await fetch("/api/health", { cache: "no-store" });
+      if (r.ok) health = (await r.json()) as { bootId: string; projectId: string };
+    } catch {
+      /* server gone */
+    }
+    const verdict = classifyPostFailure(connRef.current, health);
+    if (verdict === "reload") {
+      location.reload();
+      return;
+    }
+    setPostFailure(verdict === "server-gone" ? "server-gone" : "generic");
+    dispatchConn({ type: "post-failed" });
+    setSubmitState("failed");
+  };
   const guardConn = <A extends unknown[]>(fn: (...a: A) => void) =>
     (...a: A) => {
       if (connBlocked) {
@@ -913,6 +940,7 @@ export default function App({ data }: { data: BoardData }) {
   const navTokenRef = useRef(0);
   const [navRequest, setNavRequest] = useState<({ token: number } & NavTarget) | null>(null);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
+  const [activeFile, setActiveFile] = useState<ActiveFileRef | null>(null);
   const filesTree = useMemo(() => buildFilesTree(data), [data]);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1015,6 +1043,53 @@ export default function App({ data }: { data: BoardData }) {
     onCardClick: openAnnotation,
   };
 
+  if (submitState === "approved" || submitState === "denied") {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
+          <div className="text-3xl">
+            {submitState === "approved" ? "✓" : "✎"}
+          </div>
+          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
+            {submitState === "approved"
+              ? "Approved — the version is being written"
+              : "Changes requested — return to your session"}
+          </h1>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+            {submitState === "approved"
+              ? `${gate?.component} v${gate?.proposedVersion} will land exactly as shown here, signed.`
+              : "Claude received your feedback and will revise the draft; the gate reopens on the next sign-off attempt."}
+          </p>
+          <AutoCloseNotice state={autoClose.state} cancel={autoClose.cancel} enable={autoClose.enable} />
+        </div>
+      </div>
+    );
+  }
+
+  if (submitState === "sent" && !canPost) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-stone-50 dark:bg-stone-800/50">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
+          <div className="text-3xl">✓</div>
+          <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
+            Feedback sent
+          </h1>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+            Return to your Claude Code session — it received your{" "}
+            {annotations.length} item{annotations.length === 1 ? "" : "s"} and
+            will walk through them with you.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950">
       {copyFallbackState && (
@@ -1054,6 +1129,21 @@ export default function App({ data }: { data: BoardData }) {
       {syncNotice && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-1.5 text-xs text-stone-700 dark:text-stone-200 shadow-lg">
           {syncNotice}
+        </div>
+      )}
+      {canPost && submitState === "sent" && closeArmed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-50/95 dark:bg-stone-900/95">
+          <div className="max-w-md rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-8 text-center shadow-sm">
+            <div className="text-3xl">✓</div>
+            <h1 className="mt-2 text-lg font-semibold text-stone-800 dark:text-stone-200">
+              Sent — your session is applying it
+            </h1>
+            <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              This action closes the board; run /research-plans:board to reopen
+              it later.
+            </p>
+            <AutoCloseNotice state={autoClose.state} cancel={autoClose.cancel} enable={autoClose.enable} />
+          </div>
         </div>
       )}
       <header ref={headerRef} className="sticky top-0 z-30 border-b border-stone-200 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur">
@@ -1170,7 +1260,14 @@ export default function App({ data }: { data: BoardData }) {
             Reading works here; commenting works best on a computer
           </div>
         )}
-        {canPost && <ConnBanner phase={conn.phase} />}
+        {canPost && <ConnBanner phase={conn.phase} gateEnded={Boolean(gate)} />}
+        {canPost && postFailure === "server-gone" && (
+          <div className="border-t border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-5 py-1.5 text-center text-xs text-amber-800 dark:text-amber-300">
+            {gate
+              ? "This sign-off gate has ended. If you clicked Approve it may already be recorded — check your Claude session. Your draft is saved either way; approve it from the board with /research-plans:board."
+              : "The board server isn't running — your submission may already have reached your session; otherwise reopen with /research-plans:board."}
+          </div>
+        )}
       </header>
 
       <div className="mx-auto flex w-full max-w-[1440px]">
@@ -1181,8 +1278,8 @@ export default function App({ data }: { data: BoardData }) {
             outline={outline}
             tree={filesTree}
             onNavigate={applyRoute}
-            activeTab={tab}
-            activeComponent={selectedComponent}
+            activeId={activeFile?.id ?? null}
+            activeLabel={activeFile?.label ?? null}
             storageKey={`rp-sidebar:${data.projectId ?? data.project.name}`}
             defaultCollapsed={isCoarse}
             topOffsetPx={headerOffset}
@@ -1211,6 +1308,7 @@ export default function App({ data }: { data: BoardData }) {
             }
             onOpenReport={openReport}
             onOutline={setOutline}
+            onActiveFile={setActiveFile}
           />
         )}
         {tab === "plans" && (
@@ -1230,6 +1328,7 @@ export default function App({ data }: { data: BoardData }) {
             onRequestReview={guardConn(requestReview)}
             onOpenReport={openReport}
             onOutline={setOutline}
+            onActiveFile={setActiveFile}
           />
         )}
         {tab === "results" && (
@@ -1248,6 +1347,7 @@ export default function App({ data }: { data: BoardData }) {
             onRequestReview={guardConn(requestReview)}
             onRequestReport={guardConn(requestReport)}
             onOutline={setOutline}
+            onActiveFile={setActiveFile}
           />
         )}
         {tab === "archive" && (
@@ -1287,6 +1387,7 @@ export default function App({ data }: { data: BoardData }) {
                 : null
             }
             onOutline={setOutline}
+            onActiveFile={setActiveFile}
           />
         )}
         {tab === "models" && (
@@ -1307,6 +1408,7 @@ export default function App({ data }: { data: BoardData }) {
             onPaintResult={onPaintResult}
             onAddGeneral={addGeneral}
             onOutline={setOutline}
+            onActiveFile={setActiveFile}
           />
         )}
           </div>

@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Gate approve/deny no longer white-screens the board tab (hook-order crash present since v0.14.0); an ErrorBoundary backstops any future render error.
+- A board tab left open across a server restart now reloads itself instead of failing every action with a generic error (per-boot identity is seeded from the payload, and failed posts probe for a newer server).
+- An expired sign-off gate now says so — and that the draft is saved and approvable from the board — instead of showing "failed".
+
+### Added
+- The board tab closes itself 3 seconds after a session-ending action (approve, request changes, feedback send), with a keep-open cancel and a per-project preference. Review and report requests keep the tab open — it becomes the relaunched board's window.
+- The sidebar now shows which document you are reading: the Files tree highlights the active file and auto-expands to it, and the Outline is headed by the document's name.
+- Working drafts appear in the Files tree as a "vN (draft)" leaf (previously invisible once a component had signed versions).
+
 ## [0.19.0] - 2026-07-16
 
 A navigation and hardening release: the board gains a global Outline + Files sidebar, and a comprehensive plugin checkup fixed a security bug, made collaborator commenting safe under retries, cut per-session token overhead, and shored up keyboard accessibility.

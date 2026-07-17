@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  classifyPostFailure,
   initialConn,
   reduceConn,
   shouldReload,
@@ -116,5 +117,46 @@ describe("reconnect reducer", () => {
   it("reset restores the initial state", () => {
     const s = reduceConn(accepted(), { type: "reset" });
     expect(s).toEqual(initialConn(P));
+  });
+});
+
+describe("initialConn bootId seeding", () => {
+  it("seeds the reload baseline from the payload bootId", () => {
+    const s = initialConn("p1", "boot-a");
+    expect(shouldReload(s, { bootId: "boot-b", projectId: "p1" })).toBe(true);
+    expect(shouldReload(s, { bootId: "boot-a", projectId: "p1" })).toBe(false);
+  });
+
+  it("keeps the null baseline when no bootId is provided", () => {
+    const s = initialConn("p1");
+    expect(shouldReload(s, { bootId: "boot-b", projectId: "p1" })).toBe(false);
+  });
+
+  it("never reloads for a foreign project even with a seeded baseline", () => {
+    const s = initialConn("p1", "boot-a");
+    expect(shouldReload(s, { bootId: "boot-b", projectId: "other" })).toBe(false);
+  });
+});
+
+describe("classifyPostFailure", () => {
+  it("reload when a NEW boot of our project answers", () => {
+    const s = initialConn("p1", "boot-a");
+    expect(classifyPostFailure(s, { bootId: "boot-b", projectId: "p1" })).toBe("reload");
+  });
+
+  it("same-boot when the original server still answers", () => {
+    const s = initialConn("p1", "boot-a");
+    expect(classifyPostFailure(s, { bootId: "boot-a", projectId: "p1" })).toBe("same-boot");
+  });
+
+  it("server-gone when nothing answers or a foreign project answers", () => {
+    const s = initialConn("p1", "boot-a");
+    expect(classifyPostFailure(s, null)).toBe("server-gone");
+    expect(classifyPostFailure(s, { bootId: "x", projectId: "other" })).toBe("server-gone");
+  });
+
+  it("same-boot when the baseline is unknown (never reload blind)", () => {
+    const s = initialConn("p1");
+    expect(classifyPostFailure(s, { bootId: "boot-b", projectId: "p1" })).toBe("same-boot");
   });
 });
