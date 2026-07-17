@@ -250,13 +250,6 @@ export interface ResultsVerdict {
   comment?: string;
 }
 
-export interface VerdictRequest {
-  component: string;
-  resultsVersion: number;
-  status: "accepted" | "changes-requested";
-  comment: string;
-}
-
 export interface PlanVersionFile extends BoardFile {
   version: number;
 }

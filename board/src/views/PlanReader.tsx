@@ -22,6 +22,7 @@ import {
   parseServes,
 } from "../lib/parse";
 import { actionsVisible, planActionState } from "../lib/actions";
+import { bundleStateMark } from "../lib/bundleState";
 import RequestChangesButton from "../components/RequestChangesButton";
 import type {
   Annotation,
@@ -397,11 +398,7 @@ export default function PlanReader({
                     onClick={() => onOpenResults(group.component)}
                   >
                     r{b.resultsVersion}
-                    {b.verdict?.status === "accepted"
-                      ? " ✓"
-                      : b.verdict?.status === "changes-requested"
-                        ? " ✕"
-                        : " ●"}
+                    {bundleStateMark(b)}
                   </button>
                   {b.publishedReport && onOpenReport && (
                     <button
