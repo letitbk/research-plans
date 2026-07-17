@@ -153,6 +153,7 @@ export interface ResultsManifest {
   provenance: "planned" | "retrofit";
   trigger: "initial" | "redo-after-review" | "plan-revision";
   capturedAt: string;
+  curatedBy?: "agent";
   late?: boolean; // backfill: plan-governed work captured after the fact
   summary?: string;
   metrics: {

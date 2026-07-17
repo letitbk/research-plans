@@ -729,6 +729,11 @@ export default function Results({
               {/* provenance flow diagram (v0.11) — now closes the review read */}
               {m && (
                 <div id="results-provenance">
+                  {m.curatedBy === "agent" && (
+                    <div className="mb-2 text-xs font-medium text-stone-500 dark:text-stone-400">
+                      curated by agent (autopilot)
+                    </div>
+                  )}
                   <ProvenanceFlow
                     bundle={bundle}
                     planGoal={planGoal}

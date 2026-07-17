@@ -9,6 +9,7 @@ afterEach(cleanup);
 function data(
   validation: ValidationBlock["status"] | null,
   verdict: ResultsVerdict | null = null,
+  curatedBy: "agent" | null = null,
 ): BoardData {
   return {
     schemaVersion: 1,
@@ -44,6 +45,7 @@ function data(
                 capturedAt: "t",
                 metrics: [],
                 artifacts: [],
+                ...(curatedBy ? { curatedBy } : {}),
                 ...(validation
                   ? {
                       validation: {
@@ -111,5 +113,10 @@ describe("Results bundle state", () => {
       }),
     );
     expect(screen.getByText(/legacy verdict: accepted/i)).toBeTruthy();
+  });
+
+  it("labels agent-curated autopilot bundles", () => {
+    renderResults(data("conforms", null, "agent"));
+    expect(screen.getByText("curated by agent (autopilot)")).toBeTruthy();
   });
 });
