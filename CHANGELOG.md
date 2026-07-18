@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Plans read like documents.** Real typographic hierarchy (larger headings, doubled section rhythm, an emphasis ladder in light and dark), a 52rem reading measure, task lists and tables that render properly, and the plan's metadata as a card (title kept, provenance no longer shown twice).
+- **Build steps are a numbered spine.** Each step renders as a "Step N of M" card — nested content, task checkboxes, reference links, and inline agent-detail blocks included — and stays a semantic ordered list for assistive tech.
+- **The outline tracks your position.** The sidebar TOC highlights the section you are reading on plans and reports, resets on document switches, respects reduced motion, and still navigates on click.
+
+### Added
+- Authoring guidance in the plan template: bold decision keywords, italic rationale asides, short paragraphs, one-sentence build steps.
+
 ## [0.20.0] - 2026-07-17
 
 ### Changed

@@ -130,6 +130,32 @@ describe("decision log parsing", () => {
 });
 
 describe("execution plan parsing (contract: current template)", () => {
+  it("extracts the master-plan link from a combined preamble line", () => {
+    const raw = [
+      "# Readability — Execution Plan v1",
+      "",
+      "Component: `01-readability` · Master plan: [Project plan](../../master-plan.md) · Date: 2026-07-18",
+      "",
+      "## Context",
+      "Context.",
+    ].join("\n");
+
+    expect(parseExecutionPlan(raw).masterPlan).toBe(
+      "[Project plan](../../master-plan.md)",
+    );
+  });
+
+  it("defaults an absent master-plan field to null", () => {
+    const raw = [
+      "# Readability — Execution Plan v1",
+      "",
+      "## Context",
+      "Context.",
+    ].join("\n");
+
+    expect(parseExecutionPlan(raw).masterPlan).toBeNull();
+  });
+
   it("parses the single-narrative template, Context first", () => {
     const ep = parseExecutionPlan(read(join(TEMPLATES, "execution-plan.md")));
     expect(ep.ok).toBe(true);

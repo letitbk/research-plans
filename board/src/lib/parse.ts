@@ -308,6 +308,7 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
     date: null,
     provenance: null,
     supersedes: null,
+    masterPlan: null,
     goal: null,
     serves: null,
     sections: [],
@@ -329,6 +330,8 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
       /^Provenance:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
     const supersedes =
       /^Supersedes:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
+    const masterPlan =
+      /^(?:Component:.*?·\s*)?Master plan:\s*([^·\n]+)/m.exec(raw)?.[1]?.trim() ?? null;
     const signedOff =
       /^Signed off:\s*(.+)$/m.exec(raw)?.[1]?.trim() ?? null;
 
@@ -350,6 +353,7 @@ export function parseExecutionPlan(raw: string): ParsedExecutionPlan {
       date,
       provenance,
       supersedes,
+      masterPlan,
       goal,
       serves,
       sections,

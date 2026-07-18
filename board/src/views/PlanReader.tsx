@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Marked } from "marked";
 import Markdown from "../components/Markdown";
 import ModelChip from "../components/ModelChip";
 import ScorePanel from "../components/ScorePanel";
@@ -29,12 +30,14 @@ import type {
   BoardData,
   DraftSnapshotFile,
   ExecutionPlanGroup,
+  ParsedExecutionPlan,
   PlanCommentAnnotation,
   ReviewRequest,
   SignoffRequest,
 } from "../lib/types";
 import type { OutlineEntry } from "../lib/outline";
 import type { ActiveFileRef } from "../lib/filesTree";
+import { prefersReducedMotion, useScrollSpy } from "../lib/scrollSpy";
 
 type DocKind = "signed" | "workingDraft" | "draftSnapshot";
 
@@ -55,6 +58,114 @@ const docLabel = (d: DocRef): string =>
       ? `proposed v${d.version}`
       : `v${d.version}`;
 
+// Metadata preamble lines render as a card and are stripped from the prose so
+// they don't render twice. The H1 title is KEPT (it is the plan's only
+// human-readable title). Anything else in the preamble still renders below
+// the card. Annotations on metadata lines unanchor by design (ruled v0.21).
+const METADATA_LINE_RE =
+  /^(?:Component:.*|Master plan:.*|Date:.*|Provenance:.*|Supersedes:.*)$/;
+export function stripPreambleMetadata(body: string): string {
+  return body
+    .split("\n")
+    .filter((ln) => !METADATA_LINE_RE.test(ln.trim()))
+    .join("\n")
+    .trim();
+}
+
+/** "[label](target)" → "label"; plain strings pass through. */
+export function linkLabel(v: string): string {
+  return /^\[([^\]]+)\]\([^)]*\)$/.exec(v.trim())?.[1] ?? v;
+}
+
+function metadataRows(parsed: ParsedExecutionPlan): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (parsed.componentSlug) rows.push(["Component", parsed.componentSlug]);
+  if (parsed.version != null) rows.push(["Version", `v${parsed.version}`]);
+  if (parsed.date) rows.push(["Date", parsed.date]);
+  if (parsed.provenance) rows.push(["Provenance", parsed.provenance]);
+  if (parsed.supersedes) rows.push(["Supersedes", parsed.supersedes]);
+  if (parsed.masterPlan) rows.push(["Master plan", linkLabel(parsed.masterPlan)]);
+  return rows;
+}
+
+function MetadataCard({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <div className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-800 dark:border-stone-700 dark:bg-stone-800/50 dark:text-stone-200">
+      {rows.map(([k, v]) => (
+        <Fragment key={k}>
+          <span className="font-medium" style={{ color: "var(--rp-prose-muted)" }}>{k}</span>
+          <span>{v}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+// Build steps render as a numbered card spine (spec R2). Boundaries come from
+// marked's lexer (structural, never regex). Each item re-renders through
+// BodyParts so agent-detail keeps working; reference-link definitions from the
+// whole body are appended so cross-item links survive; GFM task state renders
+// in the card chrome (marked strips it from item.text). CRLF is normalized
+// up front — marked normalizes internally, which would break raw indexing.
+// Semantic <ol>/<li> so assistive tech still announces an ordered list.
+const stepLexer = new Marked({ gfm: true });
+const LINK_DEF_RE = /^\[[^\]]+\]:\s+\S.*$/gm;
+
+interface StepItem { text: string; task: boolean; checked: boolean }
+
+export function splitBuildSteps(
+  rawBody: string,
+): { before: string; items: StepItem[]; after: string } | null {
+  const body = rawBody.replace(/\r\n/g, "\n");
+  const tokens = stepLexer.lexer(body);
+  const list = tokens.find(
+    (t) => t.type === "list" && (t as { ordered?: boolean }).ordered,
+  ) as { raw: string; items: Array<{ text: string; task: boolean; checked?: boolean }> } | undefined;
+  if (!list) return null;
+  const start = body.indexOf(list.raw);
+  if (start === -1) return null;
+  const defs = (body.match(LINK_DEF_RE) ?? []).join("\n");
+  return {
+    before: body.slice(0, start).trim(),
+    items: list.items.map((it) => ({
+      text: defs ? `${it.text}\n\n${defs}` : it.text,
+      task: it.task,
+      checked: Boolean(it.checked),
+    })),
+    after: body.slice(start + list.raw.length).trim(),
+  };
+}
+
+function StepCards({ body, detailOpen }: { body: string; detailOpen: boolean }) {
+  const split = useMemo(() => splitBuildSteps(body), [body]);
+  if (!split) return <BodyParts source={body} detailOpen={detailOpen} />;
+  return (
+    <>
+      {split.before && <BodyParts source={split.before} detailOpen={detailOpen} />}
+      <ol className="ml-0 list-none">
+        {split.items.map((it, i) => (
+          <li
+            key={i}
+            className="my-3 rounded-lg border border-stone-200 p-4 dark:border-stone-700"
+          >
+            <div
+              className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide"
+              style={{ color: "var(--rp-prose-muted)" }}
+            >
+              Step {i + 1} of {split.items.length}
+              {it.task && (
+                <input type="checkbox" disabled checked={it.checked} className="accent-green-600" />
+              )}
+            </div>
+            <BodyParts source={it.text} detailOpen={detailOpen} />
+          </li>
+        ))}
+      </ol>
+      {split.after && <BodyParts source={split.after} detailOpen={detailOpen} />}
+    </>
+  );
+}
+
 export default function PlanReader({
   data,
   canAnnotate,
@@ -68,6 +179,7 @@ export default function PlanReader({
   navRequest,
   onOpenReport,
   onOutline,
+  onActiveOutline,
   onActiveFile,
 }: {
   data: BoardData;
@@ -90,6 +202,7 @@ export default function PlanReader({
   navRequest?: { token: number; planPath?: string } | null;
   onOpenReport?: (slug: string, resultsVersion: number) => void;
   onOutline?: (entries: OutlineEntry[]) => void;
+  onActiveOutline?: (id: string | null) => void;
   onActiveFile?: (ref: ActiveFileRef | null) => void;
 }) {
   const groups = data.files.executionPlans;
@@ -216,8 +329,14 @@ export default function PlanReader({
     () => (planMarker ? parseExecutionPlan(planMarker.body) : null),
     [planMarker],
   );
+  const cardRows = parsed?.ok ? metadataRows(parsed) : [];
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeHeading = useScrollSpy(
+    scrollRef,
+    "[data-outline-id]",
+    [doc?.path, level, diffOn],
+  );
   const scrollToSection = useCallback((heading: string) => {
     // Every section heading renders even when its body is collapsed, so scrolling
     // to the h2 works at any detail level.
@@ -226,7 +345,10 @@ export default function PlanReader({
       if (!host) return;
       for (const h of host.querySelectorAll("h2")) {
         if ((h.textContent ?? "").trim() === heading) {
-          h.scrollIntoView({ behavior: "smooth", block: "start" });
+          h.scrollIntoView({
+            behavior: prefersReducedMotion() ? "auto" : "smooth",
+            block: "start",
+          });
           return;
         }
       }
@@ -250,6 +372,12 @@ export default function PlanReader({
     onOutline?.(outlineEntries);
     return () => onOutline?.([]);
   }, [onOutline, outlineEntries]);
+  useEffect(() => {
+    onActiveOutline?.(
+      activeHeading?.getAttribute("data-outline-id") ?? null,
+    );
+    return () => onActiveOutline?.(null);
+  }, [onActiveOutline, activeHeading]);
 
   const docAnnotations = useMemo(
     () =>
@@ -435,17 +563,6 @@ export default function PlanReader({
           </div>
         )}
 
-        {parsed?.ok && parsed.provenance && (
-          <div className="mb-2">
-            <span
-              className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
-              title="Written after the work it documents — a declared, evidence-cited reconstruction, not a prospective plan."
-            >
-              Provenance: {parsed.provenance}
-            </span>
-          </div>
-        )}
-
         {parsed?.ok &&
           parsed.serves &&
           (() => {
@@ -488,7 +605,7 @@ export default function PlanReader({
         ) : (
           <div
             ref={scrollRef}
-            className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
+            className="max-w-[52rem] rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
           >
             {planMarker?.modelUsage && (
               <div className="mb-3 flex justify-end">
@@ -500,6 +617,7 @@ export default function PlanReader({
                 This plan's model-provenance marker is unreadable — the plan body is shown; regenerate or fix the marker to restore the model chip.
               </div>
             )}
+            {cardRows.length > 0 && <MetadataCard rows={cardRows} />}
             {annotatable ? (
               <AnnotationLayer
                 docKey={doc.path}
@@ -515,10 +633,10 @@ export default function PlanReader({
                   })
                 }
               >
-                <PlanBody content={docBody} level={level} />
+                <PlanBody content={docBody} level={level} stripMetadata={cardRows.length > 0} />
               </AnnotationLayer>
             ) : (
-              <PlanBody content={docBody} level={level} />
+              <PlanBody content={docBody} level={level} stripMetadata={cardRows.length > 0} />
             )}
             {parsed?.ok && (
               <div className="mt-4 border-t border-stone-100 dark:border-stone-800 pt-3 text-xs">
@@ -674,7 +792,9 @@ function SectionBlock({
   useEffect(() => setOpen(forceOpen), [forceOpen]);
   return (
     <div>
-      <Markdown source={`## ${heading}`} />
+      <div data-outline-id={heading}>
+        <Markdown source={`## ${heading}`} />
+      </div>
       {isMethod && (
         <button
           type="button"
@@ -687,7 +807,11 @@ function SectionBlock({
         </button>
       )}
       <div className={open ? "" : "max-h-0 overflow-hidden"} aria-hidden={!open}>
-        <BodyParts source={body} detailOpen={level === "full"} />
+        {heading === "Build steps" ? (
+          <StepCards body={body} detailOpen={level === "full"} />
+        ) : (
+          <BodyParts source={body} detailOpen={level === "full"} />
+        )}
       </div>
     </div>
   );
@@ -701,7 +825,15 @@ function SectionBlock({
  * comment anchoring is unaffected. Pre-v0.4 plans still carrying a "## Part 2 —"
  * banner fall back to the old two-half render.
  */
-function PlanBody({ content, level }: { content: string; level: DetailLevel }) {
+function PlanBody({
+  content,
+  level,
+  stripMetadata,
+}: {
+  content: string;
+  level: DetailLevel;
+  stripMetadata: boolean;
+}) {
   // Strip HTML comments before rendering: the execution-plan template carries a
   // guidance comment that itself contains a literal <details class="agent-detail">
   // example, which the agent-detail matcher would otherwise surface as content
@@ -714,7 +846,11 @@ function PlanBody({ content, level }: { content: string; level: DetailLevel }) {
     <>
       {sections.map((s, i) =>
         s.heading === null ? (
-          <BodyParts key="preamble" source={s.body} detailOpen={level === "full"} />
+          <BodyParts
+            key="preamble"
+            source={stripMetadata ? stripPreambleMetadata(s.body) : s.body}
+            detailOpen={level === "full"}
+          />
         ) : (
           <SectionBlock key={s.heading + i} heading={s.heading} body={s.body} level={level} />
         ),
