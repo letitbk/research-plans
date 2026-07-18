@@ -1,12 +1,14 @@
 # Output & Validation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Execute task-by-task with the per-task TDD cycle and one commit per task. If the superpowers plugin's subagent-driven-development or executing-plans skills are available they structure this well — optional, never required (this plan is self-contained). Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship the four-feature train from `docs/specs/2026-07-18-output-validation-reviewers-planning-design.md` (rev 3): rename the Results tab to "Output & Validation" (labels only), seal a mechanical F·A·I score into every finalized bundle and display it, upgrade the three rp-* reviewer prompts with codex-style discipline, and make `/plan` carry the planning doctrine standalone.
 
 **Architecture:** `results.py` gains a pure `compute_score` sealed at finalize beside `integrity`; the board reads it through a new typed `coerceOutputScore` guard into an `OutputScorePanel` (sibling of `ScorePanel`, shared chip ramp). Prompt work is template/command prose with contracts untouched; `models.py cmd_check` learns template drift so upgrades announce themselves. Planning independence is a new `references/planning-doctrine.md` + two CLAUDE.md rules + a default grounding pass in `plan.md`.
 
 **Tech Stack:** Python 3 stdlib (`results.py`, `models.py`, unittest), React + TypeScript + vitest (board), markdown command/skill prose.
+
+**Rev 2 (2026-07-18):** codex plan review (sol·xhigh, `docs/specs/2026-07-18-codex-review-output-validation-plan.md` — 1 P0, 5 P1, 5 P2) folded in full: the report-regen shareHash claim was FALSE (reports are hashed into shareHash by design — spec corrected, test dropped, targetHash-side invariance kept); integrity basis carries count/deduped names/first detail; coerceOutputScore validates schemaVersion/names/basis/computedAt; `sections.integrity` is always true; Archive gets its own score test file (no extendable fixture exists); Tracker uses `Tracker.state.test.tsx`; commands/results.md + report.md carry singular "Result tab" (sweep pattern fixed); hosted-payload + tsc + header-pin + extra edge tests added; superpowers header made optional; update-mode gitignore executes before the skip; doctrine drops the unwired `/adopt` mention; full blocker definition in board.md.
 
 ## Global Constraints
 
@@ -186,6 +188,44 @@ class TestOutputScore(unittest.TestCase):
         self.assertEqual(results.compute_score(*args, now="t"),
                          results.compute_score(*args, now="t"))
 
+    def test_non_list_steps_null(self):
+        sc = results.compute_score(
+            self._validation(steps="oops", criteria=self._criteria("met")),
+            self._integrity(), now="t")
+        self.assertIsNone(sc["channels"][0]["score"])
+
+    def test_empty_integrity_checks_null(self):
+        sc = results.compute_score(
+            self._validation(steps=self._steps("followed"),
+                             criteria=self._criteria("met")),
+            {"status": "passed", "checkedAt": "t", "checks": []}, now="t")
+        self.assertIsNone(sc["channels"][2]["score"])
+
+    def test_unverifiable_status_with_arrays_derives_normally(self):
+        sc = results.compute_score(
+            self._validation(status="unverifiable",
+                             steps=self._steps("unverifiable"),
+                             criteria=self._criteria("unverifiable")),
+            self._integrity(), now="t")
+        self.assertEqual(sc["channels"][0]["score"], 1)
+        self.assertEqual(sc["channels"][1]["score"], 1)
+
+    def test_duplicate_check_names_worst_instance_deduped_basis_with_detail(self):
+        integ = self._integrity()
+        integ["checks"].append({"name": "checksums", "verdict": "fail",
+                                "detail": "copy differs"})
+        integ["checks"].append({"name": "checksums", "verdict": "fail",
+                                "detail": "second"})
+        sc = results.compute_score(
+            self._validation(steps=self._steps("followed"),
+                             criteria=self._criteria("met")), integ, now="t")
+        self.assertEqual(sc["channels"][2]["score"], 0)
+        basis = sc["channels"][2]["basis"]
+        self.assertIn("2 check(s) failed", basis)
+        self.assertIn("checksums", basis)
+        self.assertNotIn("checksums, checksums", basis)
+        self.assertIn("copy differs", basis)
+
     def test_finalize_seals_score_and_overwrites_staged(self):
         # Staging construction: copy the exact setup used by
         # test_finalize_seals_integrity_into_manifest (this file, ~line 643) —
@@ -286,9 +326,12 @@ def _integrity_channel(integrity):
                 else "no recognized check failed")
         return 3, base + note + disagree
     score = min(_INTEGRITY_RANK[c.get("name")] for c in known_fails)
-    worst = [c.get("name") for c in known_fails
-             if _INTEGRITY_RANK[c.get("name")] == score]
-    return score, "failed: %s%s%s" % (", ".join(worst), note, disagree)
+    worst = [c for c in known_fails if _INTEGRITY_RANK[c.get("name")] == score]
+    names = ", ".join(sorted({str(c.get("name")) for c in worst}))
+    first_detail = str(worst[0].get("detail") or "").strip()
+    detail = " — %s" % first_detail if first_detail else ""
+    return score, "%d check(s) failed: %s%s%s%s" % (
+        len(worst), names, detail, note, disagree)
 
 
 def compute_score(validation, integrity, now=None):
@@ -370,9 +413,16 @@ Model the fixture on how the existing results-payload tests write `rN/manifest.j
         # collect payload twice: once with the score block, once with the same
         # manifest minus "score"; assert the two shareHash values differ
 
-    def test_report_regen_does_not_perturb_share_hash(self):
-        # collect payload, then add/replace plans/reports/<slug>-r1-report.md,
-        # collect again; assert shareHash unchanged (reports are outside manifestRaw)
+    def test_score_survives_hosted_payload(self):
+        # reuse TestCollaboratorFacingPayload's fixture idiom (tests/test_board.py:369);
+        # assert the collaborator-facing/hosted payload's bundle manifest carries "score"
+
+    # NOTE (plan-review P0): report files ARE hashed into shareHash
+    # (board.py payload_files + collect_payload; pinned by TestShareHash,
+    # tests/test_board.py:319) — a share going stale when its report changes is
+    # correct existing behavior. Do NOT write a report-regen shareHash-invariance
+    # test; the report-regen invariance that IS true (result targetHash) is
+    # pinned on the TS side in Task 3.
 
     def test_score_survives_export(self):
         # run the export path the TestExportResults class already uses;
@@ -460,6 +510,10 @@ describe("coerceOutputScore", () => {
     ["non-null total with null channel", { ...good, channels: [{ ...good.channels[0], score: null }, good.channels[1], good.channels[2]], profile: "F–·A2·I3" }],
     ["wrong max", { ...good, max: 15 }],
     ["profile mismatch", { ...good, profile: "F3·A3·I3" }],
+    ["wrong schemaVersion", { ...good, schemaVersion: 2 }],
+    ["wrong channel name", { ...good, channels: [{ ...good.channels[0], name: "F" }, good.channels[1], good.channels[2]] }],
+    ["non-string basis", { ...good, channels: [{ ...good.channels[0], basis: 7 }, good.channels[1], good.channels[2]] }],
+    ["non-string computedAt", { ...good, computedAt: 42 }],
   ])("rejects %s", (_name, raw) => {
     expect(coerceOutputScore(raw)).toBeNull();
   });
@@ -524,20 +578,26 @@ Add to `ResultsManifest` after `integrity?: IntegrityBlock;`:
 import type { OutputScore, OutputScoreChannelId } from "./types";
 
 const CHANNEL_IDS: OutputScoreChannelId[] = ["fidelity", "attainment", "integrity"];
+const CHANNEL_NAMES = ["Fidelity", "Attainment", "Integrity"];
 const LETTERS = ["F", "A", "I"];
 
 /** Runtime guard for the sealed manifest.score block. Returns the typed block
- * only when it is exactly three ordered channels with scores null|0–3 and a
+ * only when it matches what results.py seals — schemaVersion 1, exactly three
+ * ordered/named channels with scores null|0–3, string basis/computedAt, and a
  * consistent profile/total/max — anything else is treated as absent. */
 export function coerceOutputScore(raw: unknown): OutputScore | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as Record<string, unknown>;
+  if (s.schemaVersion !== 1) return null;
+  if (s.computedAt !== undefined && typeof s.computedAt !== "string") return null;
   const ch = s.channels;
   if (!Array.isArray(ch) || ch.length !== 3) return null;
   const scores: (number | null)[] = [];
   for (let i = 0; i < 3; i++) {
     const c = ch[i] as Record<string, unknown> | null;
     if (!c || typeof c !== "object" || c.id !== CHANNEL_IDS[i]) return null;
+    if (c.name !== CHANNEL_NAMES[i]) return null;
+    if (c.basis !== undefined && typeof c.basis !== "string") return null;
     const sc = c.score;
     if (sc === null) {
       scores.push(null);
@@ -594,6 +654,7 @@ git commit -m "feat(board): OutputScore types + coerceOutputScore guard, targetH
 ```tsx
 // render <OutputScorePanel score={good} sections={{ validation: true, integrity: true }} />
 // assert: text "F3", "A2", "I3" present; text "8/9" present
+// assert: the F chip's title attribute contains its basis ("all 2 steps followed")
 // click the chips button → popover appears: basis text "all 4 checks pass" visible,
 //   caption contains "derived from", buttons/links for validation + integrity present
 // re-render with sections={{ validation: false, integrity: true }} → no validation link
@@ -602,6 +663,8 @@ git commit -m "feat(board): OutputScore types + coerceOutputScore guard, targetH
 ```
 
 Use the `good` fixture shape from Task 3's test (copy it in — tests must not import each other's fixtures).
+
+Also create `board/src/views/Results.score.test.tsx`, modeled on `Results.integrity.test.tsx`'s harness (its render/fixture idiom, `Results.integrity.test.tsx:9`): a bundle whose manifest carries the valid `good` score → the banner shows `F3` and `8/9`; a bundle whose manifest carries a malformed score (`{ max: 15 }`) → neither appears (coercion treats it as absent).
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -755,10 +818,12 @@ In the banner (line 497 block), directly after the `<span className="text-sm fon
           {outputScore && (
             <OutputScorePanel
               score={outputScore}
-              sections={{ validation: !!m?.validation, integrity: !!m?.integrity }}
+              sections={{ validation: !!m?.validation, integrity: true }}
             />
           )}
 ```
+
+(`integrity: true` because the `#results-integrity` jump target renders whenever the manifest exists — including the "not recorded" state, `Results.tsx:600-604` — and a displayed score implies the manifest exists. The `#results-validation` target renders only when `m.validation` does.)
 
 - [ ] **Step 4: Run to verify pass + full board suite**
 
@@ -778,7 +843,7 @@ git commit -m "feat(board): OutputScorePanel chips in the bundle banner, shared 
 
 **Files:**
 - Modify: `board/src/views/Tracker.tsx` (results cell, lines 539-553), `board/src/views/Archive.tsx` (results cell, lines 211-219)
-- Test: extend the existing Tracker test file (find it: `rg -l "onOpenResults" board/src --glob '*.test.tsx'`) and Archive test file likewise
+- Test: extend `board/src/views/Tracker.state.test.tsx` (it already has a typed manifest-bearing result bundle, `Tracker.state.test.tsx:14`); create `board/src/views/Archive.score.test.tsx` — the only existing Archive test (`Archive.outline.test.tsx`) has an empty `executionPlans` array and no plan-linked component, so it has no bundle to extend; the new file copies its harness but builds a master-plan row whose `planLink` resolves to an execution group carrying one bundle with a manifest
 
 **Interfaces:**
 - Consumes: `coerceOutputScore` (Task 3); `latestResult.manifest?.score` / `latest.manifest?.score`.
@@ -786,7 +851,7 @@ git commit -m "feat(board): OutputScorePanel chips in the bundle banner, shared 
 
 - [ ] **Step 1: Write the failing tests**
 
-In each view's existing test file, extend a fixture bundle's manifest with a valid `score` block (copy the `good` shape from Task 4's test) and assert the rendered row contains `F3·A2·I3`; add a malformed-score fixture (e.g. `{ max: 15 }`) asserting the profile text is absent. Follow each file's existing render/fixture idiom.
+In `Tracker.state.test.tsx`, extend its fixture bundle's manifest with a valid `score` block (copy the `good` shape from Task 4's test) and assert the rendered row contains `F3·A2·I3`; add a malformed-score fixture (e.g. `{ max: 15 }`) asserting the profile text is absent. In the new `Archive.score.test.tsx`, build the linked-group fixture described under Files and make the same two assertions. Follow the existing render idiom in each source file.
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -854,7 +919,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add board/src/views/Tracker.tsx board/src/views/Archive.tsx <the two test files>
+git add board/src/views/Tracker.tsx board/src/views/Archive.tsx board/src/views/Tracker.state.test.tsx board/src/views/Archive.score.test.tsx
 git commit -m "feat(board): compact F·A·I profile in Tracker and Archive rows"
 ```
 
@@ -864,8 +929,8 @@ git commit -m "feat(board): compact F·A·I profile in Tracker and Archive rows"
 
 **Files:**
 - Modify: `board/src/App.tsx:57-66`, `board/src/views/Tracker.tsx:415`, `board/src/views/Archive.tsx:155`, `board/src/views/Timeline.tsx:32`, `board/src/lib/filesTree.ts:80`, `board/src/views/Reports.tsx:305`
-- Modify: `docs/reference.md` (lines 8, 41, 53, 69, 75), `README.md:45`
-- Test: create `board/src/App.tabs.test.ts`
+- Modify: `docs/reference.md` (lines 8, 41, 53, 69, 75), `README.md:45`, `commands/results.md` ("Result tab" at line 21), `commands/report.md` ("Result tab" at line 11), `commands/board.md` (any board-surface "Results/Result tab/view" prose; backticked `results` tokens stay)
+- Test: create `board/src/App.tabs.test.ts`; extend `board/src/views/Tracker.state.test.tsx` and `board/src/views/Archive.score.test.tsx` (from Task 5) with an `Output` column-header assertion each
 
 **Interfaces:**
 - Consumes: nothing.
@@ -902,7 +967,9 @@ Expected: FAIL (`TABS` not exported / label mismatch)
 - `Timeline.tsx:32` — `result: { dot: "bg-emerald-500", label: "Results" },` → `label: "Output"` (the filter at line 133 renders `label + "s"` → "Outputs", consistent with "Decisions"/"Reviews" and fixing today's "Resultss")
 - `filesTree.ts:80` — `label: "Results",` → `label: "Output",`
 - `Reports.tsx:305` — in the sentence `…validation are on the Results tab; there is nothing to narrate…` replace `Results tab` → `Output & Validation tab`
-- Sweep for leftovers: `cd <worktree> && rg -n "Results tab|Results view" board/src commands docs/reference.md README.md` — update any user-facing hit that refers to the board surface (backticked `results` tokens and code identifiers stay).
+- `commands/results.md:21` and `commands/report.md:11` — both say `Result tab` (singular!) → `Output & Validation tab`
+- Sweep for leftovers: `cd <worktree> && rg -n "Results? tab|Results? view|Results? section" board/src commands docs/reference.md README.md` — update any user-facing hit that refers to the board surface (backticked `results` tokens and code identifiers stay). Note the singular `Result` form in the pattern — the two known hits above use it.
+- Header pins: in `Tracker.state.test.tsx` and `Archive.score.test.tsx`, assert the rendered table contains an `Output` column header (and no `Results` header).
 
 Docs:
 - `docs/reference.md:8` — `- [Results](#results)` → `- [Output & Validation](#output--validation)`
@@ -920,7 +987,7 @@ Expected: PASS after updating any failing label assertions (`filesTree`/`Sidebar
 - [ ] **Step 5: Commit**
 
 ```bash
-git add board/src/App.tsx board/src/App.tabs.test.ts board/src/views/Tracker.tsx board/src/views/Archive.tsx board/src/views/Timeline.tsx board/src/lib/filesTree.ts board/src/views/Reports.tsx docs/reference.md README.md <any updated test files>
+git add board/src/App.tsx board/src/App.tabs.test.ts board/src/views/Tracker.tsx board/src/views/Archive.tsx board/src/views/Timeline.tsx board/src/lib/filesTree.ts board/src/views/Reports.tsx board/src/views/Tracker.state.test.tsx board/src/views/Archive.score.test.tsx docs/reference.md README.md commands/results.md commands/report.md commands/board.md <any other updated test files>
 git commit -m "feat(board): rename Results tab to Output & Validation (labels only, ids stable)"
 ```
 
@@ -1204,7 +1271,7 @@ git commit -m "feat(models): cmd_check detects template drift, generic regenerat
 1. Contract sentence — after `…quotes short and copy-paste so they match the RENDERED text of the target.` insert:
 
 ```
-Every comment's text begins with exactly one severity tag — `[blocker]` (invalidates a finding or decision), `[major]` (materially changes the work), `[minor]` (worth fixing, not blocking) — and comments are ordered most severe first; validate the tag on every returned comment and repair once (re-prompt) when it is absent or invalid.
+Every comment's text begins with exactly one severity tag — `[blocker]` (invalidates a finding or decision — must be resolved before acting on the work), `[major]` (materially changes the work if acted on), `[minor]` (worth fixing, not blocking) — and comments are ordered most severe first; validate the tag on every returned comment and repair once (re-prompt) when it is absent or invalid.
 ```
 
 2. External-reviewer temp-file parenthetical — replace `(fixed instructions + the target's content + the scope's guidance + the contract)` with:
@@ -1267,7 +1334,7 @@ git commit -m "feat(board.md): shared reviewer severity contract, per-reviewer g
    - Root `.gitignore` — ensure it contains a `logs/` line (create the file if missing, append the line if absent; never rewrite existing content). Rule 9's evidence logs must never be committable.
 ```
 
-2. Update-mode list (line 14): after offer (e) insert `(f) ensure the root .gitignore carries the logs/ line (step 5) — rule 9's evidence discipline reaches existing projects only with it, and` — then re-letter the existing renew hand-off offer to (g). (Read the sentence and keep its grammar intact.)
+2. Update-mode list (line 14): after offer (e) insert `(f) ensure the root .gitignore carries the logs/ line — an accepted offer performs the step-5 append operation immediately, before this mode's "skip steps 3–5" takes effect (rule 9's evidence discipline reaches existing projects only with it), and` — then re-letter the existing renew hand-off offer to (g). (Read the sentence and keep its grammar intact; the point is that update mode executes the append itself, never deferring to a skipped step.)
 
 3. Step 6, add a final bullet:
 
@@ -1304,7 +1371,7 @@ git commit -m "feat(init): evidence + assumptions rules in CLAUDE.md section, lo
 ```markdown
 # Planning doctrine — how an execution plan gets authored
 
-Referenced by `/research-plans:plan` (steps 3–5) and `/research-plans:adopt`. The rubric (`plan-rubric.md`) grades the artifact; this file governs the authoring, so a plan authored here works as well standalone as one authored inside a heavyweight personal setup.
+Referenced by `/research-plans:plan` (steps 3–5). The rubric (`plan-rubric.md`) grades the artifact; this file governs the authoring, so a plan authored here works as well standalone as one authored inside a heavyweight personal setup.
 
 ## Research first — plan from the repo's reality, not from memory of it
 
@@ -1406,6 +1473,7 @@ Expected: build succeeds; `git status` shows `skills/managing-research-plans/ass
 
 Run: `cd <worktree> && python3 -m unittest discover -s tests -v 2>&1 | tail -3` — Expected: OK
 Run: `cd <worktree>/board && ./node_modules/.bin/vitest run 2>&1 | tail -5` — Expected: all files pass
+Run: `cd <worktree>/board && ./node_modules/.bin/tsc -b && rm -f tsconfig.tsbuildinfo` — Expected: no output (typecheck clean; the cache file must not linger)
 Run: `cd <worktree>/board && rg -a "Output & Validation" ../skills/managing-research-plans/assets/board-template.html | head -1` — Expected: at least one hit (the rename shipped into the template)
 
 - [ ] **Step 4: Commit**
