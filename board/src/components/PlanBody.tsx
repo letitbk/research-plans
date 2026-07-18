@@ -16,7 +16,6 @@ export function stripPreambleMetadata(body: string): string {
     .join("\n")
     .trim();
 }
-
 // Build steps render as a numbered card spine (spec R2). Boundaries come from
 // marked's lexer (structural, never regex). Each item re-renders through
 // BodyParts so agent-detail keeps working; reference-link definitions from the
@@ -300,4 +299,3 @@ function LegacyPlanBody({ content }: { content: string }) {
     </>
   );
 }
-
