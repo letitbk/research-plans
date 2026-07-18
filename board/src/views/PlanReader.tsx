@@ -29,6 +29,7 @@ import type {
   BoardData,
   DraftSnapshotFile,
   ExecutionPlanGroup,
+  ParsedExecutionPlan,
   PlanCommentAnnotation,
   ReviewRequest,
   SignoffRequest,
@@ -54,6 +55,49 @@ const docLabel = (d: DocRef): string =>
     : d.docKind === "workingDraft"
       ? `proposed v${d.version}`
       : `v${d.version}`;
+
+// Metadata preamble lines render as a card and are stripped from the prose so
+// they don't render twice. The H1 title is KEPT (it is the plan's only
+// human-readable title). Anything else in the preamble still renders below
+// the card. Annotations on metadata lines unanchor by design (ruled v0.21).
+const METADATA_LINE_RE =
+  /^(?:Component:.*|Master plan:.*|Date:.*|Provenance:.*|Supersedes:.*)$/;
+export function stripPreambleMetadata(body: string): string {
+  return body
+    .split("\n")
+    .filter((ln) => !METADATA_LINE_RE.test(ln.trim()))
+    .join("\n")
+    .trim();
+}
+
+/** "[label](target)" → "label"; plain strings pass through. */
+export function linkLabel(v: string): string {
+  return /^\[([^\]]+)\]\([^)]*\)$/.exec(v.trim())?.[1] ?? v;
+}
+
+function metadataRows(parsed: ParsedExecutionPlan): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (parsed.componentSlug) rows.push(["Component", parsed.componentSlug]);
+  if (parsed.version != null) rows.push(["Version", `v${parsed.version}`]);
+  if (parsed.date) rows.push(["Date", parsed.date]);
+  if (parsed.provenance) rows.push(["Provenance", parsed.provenance]);
+  if (parsed.supersedes) rows.push(["Supersedes", parsed.supersedes]);
+  if (parsed.masterPlan) rows.push(["Master plan", linkLabel(parsed.masterPlan)]);
+  return rows;
+}
+
+function MetadataCard({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <div className="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm text-stone-800 dark:border-stone-700 dark:bg-stone-800/50 dark:text-stone-200">
+      {rows.map(([k, v]) => (
+        <Fragment key={k}>
+          <span className="font-medium" style={{ color: "var(--rp-prose-muted)" }}>{k}</span>
+          <span>{v}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
 
 export default function PlanReader({
   data,
@@ -216,6 +260,7 @@ export default function PlanReader({
     () => (planMarker ? parseExecutionPlan(planMarker.body) : null),
     [planMarker],
   );
+  const cardRows = parsed?.ok ? metadataRows(parsed) : [];
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollToSection = useCallback((heading: string) => {
@@ -435,17 +480,6 @@ export default function PlanReader({
           </div>
         )}
 
-        {parsed?.ok && parsed.provenance && (
-          <div className="mb-2">
-            <span
-              className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-300"
-              title="Written after the work it documents — a declared, evidence-cited reconstruction, not a prospective plan."
-            >
-              Provenance: {parsed.provenance}
-            </span>
-          </div>
-        )}
-
         {parsed?.ok &&
           parsed.serves &&
           (() => {
@@ -500,6 +534,7 @@ export default function PlanReader({
                 This plan's model-provenance marker is unreadable — the plan body is shown; regenerate or fix the marker to restore the model chip.
               </div>
             )}
+            {cardRows.length > 0 && <MetadataCard rows={cardRows} />}
             {annotatable ? (
               <AnnotationLayer
                 docKey={doc.path}
@@ -515,10 +550,10 @@ export default function PlanReader({
                   })
                 }
               >
-                <PlanBody content={docBody} level={level} />
+                <PlanBody content={docBody} level={level} stripMetadata={cardRows.length > 0} />
               </AnnotationLayer>
             ) : (
-              <PlanBody content={docBody} level={level} />
+              <PlanBody content={docBody} level={level} stripMetadata={cardRows.length > 0} />
             )}
             {parsed?.ok && (
               <div className="mt-4 border-t border-stone-100 dark:border-stone-800 pt-3 text-xs">
@@ -701,7 +736,15 @@ function SectionBlock({
  * comment anchoring is unaffected. Pre-v0.4 plans still carrying a "## Part 2 —"
  * banner fall back to the old two-half render.
  */
-function PlanBody({ content, level }: { content: string; level: DetailLevel }) {
+function PlanBody({
+  content,
+  level,
+  stripMetadata,
+}: {
+  content: string;
+  level: DetailLevel;
+  stripMetadata: boolean;
+}) {
   // Strip HTML comments before rendering: the execution-plan template carries a
   // guidance comment that itself contains a literal <details class="agent-detail">
   // example, which the agent-detail matcher would otherwise surface as content
@@ -714,7 +757,11 @@ function PlanBody({ content, level }: { content: string; level: DetailLevel }) {
     <>
       {sections.map((s, i) =>
         s.heading === null ? (
-          <BodyParts key="preamble" source={s.body} detailOpen={level === "full"} />
+          <BodyParts
+            key="preamble"
+            source={stripMetadata ? stripPreambleMetadata(s.body) : s.body}
+            detailOpen={level === "full"}
+          />
         ) : (
           <SectionBlock key={s.heading + i} heading={s.heading} body={s.body} level={level} />
         ),

@@ -334,6 +334,7 @@ export interface ParsedExecutionPlan {
   date: string | null;
   provenance: string | null; // "Provenance:" header; null = prospective
   supersedes: string | null;
+  masterPlan: string | null;
   goal: string | null; // "Goal and success criteria" body; null in pre-v0.3 plans
   serves: string | null; // "Serves:" line inside the goal section
   sections: { heading: string; content: string }[];
