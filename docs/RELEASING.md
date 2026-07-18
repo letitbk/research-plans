@@ -47,3 +47,4 @@ reading the newest CHANGELOG entry for highlights — so write that entry for a 
 | v0.20.0 | 15fe5d8 | release commit (PR #23 flow redesign: review-room finalize + bundle-state + batch + /execute; bump on main after merge) |
 | v0.21.0 | 28e5274 | release commit (PR #24 readability: typography + metadata card + step cards + scroll-spy; bump on main after merge) |
 | v0.22.0 | 7eb0930 | release commit (PR #25 output & validation: tab rename + F·A·I score + reviewer discipline + planning doctrine; bump on main after merge) |
+| v0.23.0 | f465edc | release commit (PR #26 sign-at-execution: strict trailer grammar + sign sessions both transports + amendments + /sign + shutdown handoff; bump on main after merge) |
