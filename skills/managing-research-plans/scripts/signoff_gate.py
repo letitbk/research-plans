@@ -57,6 +57,58 @@ def normalize_plan(text):
     return "\n".join(lines) + "\n"
 
 
+TRAILER_SIGNED_RE = re.compile(r"^Signed off: .+$")
+TRAILER_AMEND_RE = re.compile(r"^Amendment recorded, \d{4}-\d{2}-\d{2}$")
+
+
+def parse_trailer(text):
+    """One strict trailer grammar (spec §3 rule 3), shared by the hook, board.py,
+    and — mirrored line-for-line in board/src/lib/trailer.ts — the board UI.
+    The LAST non-empty line may be exactly one canonical trailer; NO other line
+    (stripped, code fences included) may match either pattern. Reject, not ignore."""
+    lines = text.splitlines()
+    idx = len(lines) - 1
+    while idx >= 0 and not lines[idx].strip():
+        idx -= 1
+    final = lines[idx].strip() if idx >= 0 else ""
+    kind = "none"
+    if TRAILER_SIGNED_RE.match(final):
+        kind = "signed"
+    elif TRAILER_AMEND_RE.match(final):
+        kind = "amendment"
+    violations = []
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if i == idx and kind != "none":
+            continue
+        if TRAILER_SIGNED_RE.match(s) or TRAILER_AMEND_RE.match(s):
+            violations.append("line %d: %s" % (i + 1, s))
+    if violations:
+        return {"kind": "malformed", "line": final if kind != "none" else None,
+                "violations": violations}
+    return {"kind": kind, "line": final if kind != "none" else None, "violations": []}
+
+
+def strip_trailer(text):
+    """Remove exactly one canonical final trailer (plus an optional immediately
+    preceding --- separator and trailing blanks). Unchanged for none/malformed."""
+    tr = parse_trailer(text)
+    if tr["kind"] not in ("signed", "amendment"):
+        return text
+    lines = text.splitlines()
+    idx = len(lines) - 1
+    while idx >= 0 and not lines[idx].strip():
+        idx -= 1
+    del lines[idx:]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and lines[-1].strip() == "---":
+        lines.pop()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
 def check_ticket(ticket, slug, version, content):
     """Validate a batch-approval ticket for a new vN.md write. Returns
     (decision, reason). Never opens the interactive board — a present-but-invalid
