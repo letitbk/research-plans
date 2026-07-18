@@ -37,5 +37,34 @@ class TestBoardReviewerPortabilityDocs(unittest.TestCase):
         self.assertIn("not available — pick another reviewer", command)
 
 
+class TestSignTransactionDocs(unittest.TestCase):
+    def test_sign_reference_names_the_shared_procedures(self):
+        reference = (REPO / "skills" / "managing-research-plans" /
+                     "references" / "sign-off.md").read_text(encoding="utf-8")
+
+        for heading in ("## The finalization transaction",
+                        "## Launching a sign session", "## Recovery"):
+            self.assertIn(heading, reference)
+        self.assertIn("--sign [NN-slug] --no-open", reference)
+        self.assertIn(".sign-feedback-v<N>.md", reference)
+        self.assertIn("Do not rely on stdout alone", reference)
+
+    def test_plan_leaves_a_scored_pending_draft(self):
+        command = (REPO / "commands" / "plan.md").read_text(encoding="utf-8")
+
+        self.assertIn("draft ready — it signs at /research-plans:execute", command)
+        self.assertIn("link it to the draft path", command)
+        self.assertNotIn("--gate-batch", command)
+        self.assertNotIn("clicks **Approve**", command)
+
+    def test_sync_records_an_amendment_without_a_ticket(self):
+        command = (REPO / "commands" / "sync.md").read_text(encoding="utf-8")
+
+        self.assertIn("Amendment recorded, <YYYY-MM-DD>", command)
+        self.assertIn("without a ticket or board action", command)
+        self.assertIn("amended △", command)
+        self.assertNotIn("new signed version", command)
+
+
 if __name__ == "__main__":
     unittest.main()
