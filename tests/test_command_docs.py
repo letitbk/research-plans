@@ -84,6 +84,29 @@ class TestSignTransactionDocs(unittest.TestCase):
         self.assertNotIn("Sign-off order", command)
         self.assertNotIn("clicked Approve", command)
 
+    def test_results_uses_the_governing_canonical_version(self):
+        command = (REPO / "commands" / "results.md").read_text(encoding="utf-8")
+        validator = (REPO / "skills" / "managing-research-plans" /
+                     "templates" / "agents" /
+                     "rp-results-validator.md").read_text(encoding="utf-8")
+
+        self.assertIn("governing plan version", command)
+        self.assertIn("valid signed or amendment trailer", command)
+        self.assertIn("approval does not gate validation eligibility", command)
+        self.assertIn("governing plan version", validator)
+
+    def test_live_doctrine_no_longer_routes_approval_through_the_board(self):
+        roots = (REPO / "commands", REPO / "skills")
+        live_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for root in roots
+            for path in root.rglob("*.md")
+        )
+
+        for stale in ("Approve on the board", "board Approve", "review room",
+                      "gate-batch"):
+            self.assertNotIn(stale, live_text)
+
 
 if __name__ == "__main__":
     unittest.main()
