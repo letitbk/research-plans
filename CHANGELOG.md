@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [0.23.0] - 2026-07-18
+
+Sign-at-execution (PR #26): approval moves out of the persistent board into slim one-shot sign sessions, plans sign at the `/execute` gate instead of at authoring, and post-execution revisions are recorded as amendment versions — one browser decision per component, at the moment it matters.
 
 ### Added
 - **`/research-plans:sign`.** Sign one or many pending plans without starting execution. Durable tickets and saved `.sign-feedback-vN.md` files let an interrupted session resume from disk.
