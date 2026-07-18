@@ -180,7 +180,7 @@ describe("per-document staleness", () => {
     const annotation = resultComment(1);
     const base = resultsBundle(1, "manifest-v1");
     const baseHash = targetHash(boardWith("original", [base]), annotation);
-    const withScore = {
+    const withScore: ResultsBundle = {
       ...base,
       manifest: {
         schemaVersion: 1,
