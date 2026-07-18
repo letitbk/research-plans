@@ -40,7 +40,7 @@ def normalize_plan(text):
 
     A `.draft-vN.md` is unsigned; the final `vN.md` gets a `Signed off:` line (and
     a `---` rule) appended at write time. Stripping that trailer plus trailing
-    whitespace makes normalize(draft) == normalize(signed), so a batch-approval
+    whitespace makes normalize(draft) == normalize(signed), so a sign-session
     ticket hashed over the draft authorizes the signed write. Board and gate MUST
     use this same function."""
     lines = [ln.rstrip() for ln in text.replace("\r\n", "\n").split("\n")]
@@ -110,8 +110,8 @@ def strip_trailer(text):
 
 
 def check_ticket(ticket, slug, version, content):
-    """Validate a batch-approval ticket for a new vN.md write. Returns
-    (decision, reason). Never opens the interactive board — a present-but-invalid
+    """Validate a sign-session approval ticket for a new vN.md write. Returns
+    (decision, reason). Never opens an interactive sign session — a present-but-invalid
     ticket fast-denies with a precise fix, so a bulk write loop cannot silently
     pop an unattended browser gate."""
     try:
@@ -124,7 +124,7 @@ def check_ticket(ticket, slug, version, content):
             ".draft-v%d.md)." % (ticket.name, slug, slug, version))
     if doc.get("slug") != slug or doc.get("version") != version:
         return "deny", (
-            "Batch ticket %s does not match %s v%d (slug/version mismatch). "
+            "Sign ticket %s does not match %s v%d (slug/version mismatch). "
             "Run /research-plans:sign %s to sign this plan again."
             % (ticket.name, slug, version, slug))
     exp = doc.get("expiry")
@@ -153,7 +153,8 @@ def check_ticket(ticket, slug, version, content):
             "mismatch). Run /research-plans:sign %s to sign the current draft "
             "again." % (slug, version, slug))
     return "allow", (
-        "Batch-approved: %s v%d approved by %s in batch %s at %s (ticket %s; left "
+        "Sign-session approved: %s v%d approved by %s in session %s at %s "
+        "(ticket %s; left "
         "in place — inert once v%d.md exists)." % (
             slug, version, doc.get("approver", "researcher"), doc.get("batchId", "?"),
             doc.get("approvedAt", "?"), ticket.name, version))
@@ -295,8 +296,8 @@ def main():
             )
         sys.exit(0)
 
-    # ---- Batch-approval ticket forgery guard. Tickets (.import-approved-*) are
-    # written ONLY by board.py --gate-batch (a subprocess, outside the agent's
+    # ---- Sign-session ticket forgery guard. Tickets (.import-approved-*) are
+    # written ONLY by board.py --sign (a subprocess, outside the agent's
     # Write/Edit tools). A direct agent write here would forge sign-off — deny it
     # inside the gate's own enforcement domain. ----
     if (
@@ -306,10 +307,10 @@ def main():
     ):
         if find_project_root(p) is not None:
             deny(
-                "Batch approval tickets (%s*) are created only by the board's "
-                "batch sign-off flow (board.py --gate-batch), never written "
-                "directly. Approve plans on the board; the ticket is written for "
-                "you." % TICKET_PREFIX
+                "Sign-session approval tickets (%s*) are created only by "
+                "board.py --sign, never written directly. Run "
+                "/research-plans:sign; the ticket is written for you."
+                % TICKET_PREFIX
             )
         sys.exit(0)
 
@@ -377,8 +378,8 @@ def main():
             % (slug, version)
         )
 
-    # ---- Batch sign-off ticket: if the researcher pre-approved this exact plan
-    # on the board's --gate-batch pass, the ticket authorizes the write without
+    # ---- Sign-session ticket: if the researcher approved this exact plan in a
+    # prior sign session, the ticket authorizes the write without
     # reopening the browser. A present-but-invalid ticket fast-denies (never
     # opens the interactive gate); an absent ticket falls through to it. ----
     ticket = p.parent.parent / ("%s%s-v%d" % (TICKET_PREFIX, slug, version))
