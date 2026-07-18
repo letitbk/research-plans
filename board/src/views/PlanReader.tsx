@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Marked } from "marked";
 import Markdown from "../components/Markdown";
 import ModelChip from "../components/ModelChip";
 import ScorePanel from "../components/ScorePanel";
@@ -96,6 +97,71 @@ function MetadataCard({ rows }: { rows: Array<[string, string]> }) {
         </Fragment>
       ))}
     </div>
+  );
+}
+
+// Build steps render as a numbered card spine (spec R2). Boundaries come from
+// marked's lexer (structural, never regex). Each item re-renders through
+// BodyParts so agent-detail keeps working; reference-link definitions from the
+// whole body are appended so cross-item links survive; GFM task state renders
+// in the card chrome (marked strips it from item.text). CRLF is normalized
+// up front — marked normalizes internally, which would break raw indexing.
+// Semantic <ol>/<li> so assistive tech still announces an ordered list.
+const stepLexer = new Marked({ gfm: true });
+const LINK_DEF_RE = /^\[[^\]]+\]:\s+\S.*$/gm;
+
+interface StepItem { text: string; task: boolean; checked: boolean }
+
+export function splitBuildSteps(
+  rawBody: string,
+): { before: string; items: StepItem[]; after: string } | null {
+  const body = rawBody.replace(/\r\n/g, "\n");
+  const tokens = stepLexer.lexer(body);
+  const list = tokens.find(
+    (t) => t.type === "list" && (t as { ordered?: boolean }).ordered,
+  ) as { raw: string; items: Array<{ text: string; task: boolean; checked?: boolean }> } | undefined;
+  if (!list) return null;
+  const start = body.indexOf(list.raw);
+  if (start === -1) return null;
+  const defs = (body.match(LINK_DEF_RE) ?? []).join("\n");
+  return {
+    before: body.slice(0, start).trim(),
+    items: list.items.map((it) => ({
+      text: defs ? `${it.text}\n\n${defs}` : it.text,
+      task: it.task,
+      checked: Boolean(it.checked),
+    })),
+    after: body.slice(start + list.raw.length).trim(),
+  };
+}
+
+function StepCards({ body, detailOpen }: { body: string; detailOpen: boolean }) {
+  const split = useMemo(() => splitBuildSteps(body), [body]);
+  if (!split) return <BodyParts source={body} detailOpen={detailOpen} />;
+  return (
+    <>
+      {split.before && <BodyParts source={split.before} detailOpen={detailOpen} />}
+      <ol className="ml-0 list-none">
+        {split.items.map((it, i) => (
+          <li
+            key={i}
+            className="my-3 rounded-lg border border-stone-200 p-4 dark:border-stone-700"
+          >
+            <div
+              className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide"
+              style={{ color: "var(--rp-prose-muted)" }}
+            >
+              Step {i + 1} of {split.items.length}
+              {it.task && (
+                <input type="checkbox" disabled checked={it.checked} className="accent-green-600" />
+              )}
+            </div>
+            <BodyParts source={it.text} detailOpen={detailOpen} />
+          </li>
+        ))}
+      </ol>
+      {split.after && <BodyParts source={split.after} detailOpen={detailOpen} />}
+    </>
   );
 }
 
@@ -722,7 +788,11 @@ function SectionBlock({
         </button>
       )}
       <div className={open ? "" : "max-h-0 overflow-hidden"} aria-hidden={!open}>
-        <BodyParts source={body} detailOpen={level === "full"} />
+        {heading === "Build steps" ? (
+          <StepCards body={body} detailOpen={level === "full"} />
+        ) : (
+          <BodyParts source={body} detailOpen={level === "full"} />
+        )}
       </div>
     </div>
   );
