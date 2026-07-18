@@ -45,3 +45,4 @@ reading the newest CHANGELOG entry for highlights — so write that entry for a 
 | v0.19.0 | 402d44e | release commit (board sidebar PR #19 + CSRF PR #20 + checkup fixes PR #21, all post-0.18.0; bump on main after merges) |
 | v0.19.1 | 31601fd | release commit (PR #22 hotfix: approve crash + stale-tab + auto-close + active-file sidebar; bump on main after merge) |
 | v0.20.0 | 15fe5d8 | release commit (PR #23 flow redesign: review-room finalize + bundle-state + batch + /execute; bump on main after merge) |
+| v0.21.0 | 28e5274 | release commit (PR #24 readability: typography + metadata card + step cards + scroll-spy; bump on main after merge) |
