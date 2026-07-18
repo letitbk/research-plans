@@ -933,3 +933,29 @@ export const devData: BoardData = {
     ],
   },
 };
+
+const devSignItem = {
+  component: "03-descriptives",
+  proposedVersion: 2,
+  path: "plans/execution/03-descriptives/.draft-v2.md",
+  content: descriptivesDraft,
+  contentHash: "d".repeat(64),
+  ticketed: false,
+};
+
+/** Manual dev fixtures for both one-shot signing transports. */
+export const devTicketSignData: BoardData = {
+  ...devData,
+  focus: devSignItem.component,
+  sign: { batchId: "dev-ticket-sign", transport: "ticket", items: [devSignItem] },
+};
+
+export const devHookSignData: BoardData = {
+  ...devData,
+  focus: devSignItem.component,
+  sign: {
+    batchId: "dev-hook-sign",
+    transport: "hook",
+    items: [{ ...devSignItem, path: "plans/execution/03-descriptives/.gate-v2.md" }],
+  },
+};

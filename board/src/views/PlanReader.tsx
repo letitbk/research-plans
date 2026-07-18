@@ -20,9 +20,8 @@ import {
   parseScorecard,
   parseServes,
 } from "../lib/parse";
-import { actionsVisible, planActionState } from "../lib/actions";
+import { actionsVisible } from "../lib/actions";
 import { bundleStateMark } from "../lib/bundleState";
-import RequestChangesButton from "../components/RequestChangesButton";
 import type {
   Annotation,
   BoardData,
@@ -31,7 +30,6 @@ import type {
   ParsedExecutionPlan,
   PlanCommentAnnotation,
   ReviewRequest,
-  SignoffRequest,
 } from "../lib/types";
 import type { OutlineEntry } from "../lib/outline";
 import type { ActiveFileRef } from "../lib/filesTree";
@@ -96,7 +94,6 @@ export default function PlanReader({
   onPaintResult,
   onOpenResults,
   onRequestReview,
-  onSignoff,
   navRequest,
   onOpenReport,
   onOutline,
@@ -117,7 +114,6 @@ export default function PlanReader({
   ) => void;
   onOpenResults: (slug: string) => void;
   onRequestReview?: (req: ReviewRequest) => void;
-  onSignoff?: (req: SignoffRequest) => void;
   // Click-sync (control surface): one-shot navigation request from a feedback
   // card. Internal selection stays authoritative; each new token overrides.
   navRequest?: { token: number; planPath?: string } | null;
@@ -361,28 +357,6 @@ export default function PlanReader({
           )}
           <div className="ml-auto flex items-center gap-2">
             {scorecard && <ScorePanel scorecard={scorecard} />}
-            {actionsVisible(data) && onSignoff && doc.docKind === "workingDraft" && group && (() => {
-              const st = planActionState(data, group.component, annotations);
-              if (st.kind !== "approve") return null;
-              return (
-                <span className="flex items-center gap-1">
-                  <button
-                    className="rounded border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950 px-2 py-0.5 text-xs font-medium text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-40"
-                    disabled={st.blockedByComments}
-                    title={st.blockedByComments ? "Send or delete the pending comments on this draft first" : undefined}
-                    onClick={() => onSignoff({ component: group.component, version: st.version as number, decision: "approve" })}
-                  >
-                    Approve v{st.version}
-                  </button>
-                  <RequestChangesButton
-                    requireReason={!st.blockedByComments}
-                    onSubmit={(reason) =>
-                      onSignoff({ component: group.component, version: st.version as number, decision: "request-changes", reason })
-                    }
-                  />
-                </span>
-              );
-            })()}
             {actionsVisible(data) && onRequestReview && doc.docKind !== "draftSnapshot" && (
               <ReviewMenu
                 onPick={(agent) =>

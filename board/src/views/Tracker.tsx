@@ -5,11 +5,10 @@ import AnnotationLayer, {
   type AnchoredSelection,
 } from "../components/AnnotationLayer";
 import ReviewMenu from "../components/ReviewMenu";
-import { actionsVisible, planActionState } from "../lib/actions";
+import { actionsVisible } from "../lib/actions";
 import { hasSubstantiveFindings } from "../lib/findings";
 import type { OutlineEntry } from "../lib/outline";
 import type { ActiveFileRef } from "../lib/filesTree";
-import RequestChangesButton from "../components/RequestChangesButton";
 import { bundleState, bundleStateMark } from "../lib/bundleState";
 import { coerceOutputScore } from "../lib/outputScore";
 import type {
@@ -18,7 +17,6 @@ import type {
   DocCommentAnnotation,
   ReviewRequest,
   TrackerStatus,
-  SignoffRequest,
 } from "../lib/types";
 import {
   parseDecisionLog,
@@ -54,7 +52,6 @@ export default function Tracker({
   onOpenResults,
   onAddGeneral,
   onRequestReview,
-  onSignoff,
   onOpenArchive,
   onOpenReport,
   onOutline,
@@ -73,7 +70,6 @@ export default function Tracker({
   onOpenResults: (slug: string) => void;
   onAddGeneral: (view: string, comment: string) => void;
   onRequestReview?: (req: ReviewRequest) => void;
-  onSignoff?: (req: SignoffRequest) => void;
   onOpenArchive?: () => void;
   onOpenReport?: (slug: string, resultsVersion: number) => void;
   onOutline?: (entries: OutlineEntry[]) => void;
@@ -519,37 +515,6 @@ export default function Tracker({
                             malformed trailer ⚠
                           </div>
                         )}
-                        {actionsVisible(data) && onSignoff && (() => {
-                          const st = planActionState(data, slug, annotations);
-                          if (st.kind === "approve") {
-                            return (
-                              <div className="flex flex-wrap items-center gap-1">
-                                <button
-                                  className="rounded border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950 px-1.5 py-0.5 text-[11px] font-medium text-green-800 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-40"
-                                  disabled={st.blockedByComments}
-                                  title={st.blockedByComments ? "Send or delete the pending comments on this draft first" : undefined}
-                                  onClick={() => onSignoff({ component: slug, version: st.version as number, decision: "approve" })}
-                                >
-                                  Approve v{st.version}
-                                </button>
-                                <RequestChangesButton
-                                  requireReason={!st.blockedByComments}
-                                  onSubmit={(reason) =>
-                                    onSignoff({ component: slug, version: st.version as number, decision: "request-changes", reason })
-                                  }
-                                />
-                              </div>
-                            );
-                          }
-                          if (st.kind === "signedOff") {
-                            return (
-                              <div className="text-[11px] text-green-700 dark:text-green-400">
-                                ✓ Signed off v{st.version}
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
                       </div>
                     ) : missingFile ? (
                       <span className="rounded bg-red-50 dark:bg-red-950 px-1.5 py-0.5 text-xs text-red-700 dark:text-red-400">
