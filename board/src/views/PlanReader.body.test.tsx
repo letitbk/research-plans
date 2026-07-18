@@ -79,6 +79,11 @@ function draw(detailLevel: "compact" | "standard" | "full") {
 }
 
 describe("PlanReader detail-level invariants", () => {
+  it("caps the plan reading card at 52rem", () => {
+    draw("standard");
+    expect(screen.getByText("Contract context stays visible.").closest(".rounded-lg")?.classList.contains("max-w-[52rem]")).toBe(true);
+  });
+
   it("clips compact method bodies but keeps them mounted", () => {
     draw("compact");
     expect(screen.getByText("Method approach stays mounted.").closest(".max-h-0")).toBeTruthy();

@@ -488,7 +488,7 @@ export default function PlanReader({
         ) : (
           <div
             ref={scrollRef}
-            className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
+            className="max-w-[52rem] rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
           >
             {planMarker?.modelUsage && (
               <div className="mb-3 flex justify-end">

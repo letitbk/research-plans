@@ -53,6 +53,11 @@ function draw(d: BoardData, over: Record<string, unknown> = {}) {
 }
 
 describe("Reports view", () => {
+  it("caps the report reading card at 52rem", () => {
+    draw(data([bundle({})]));
+    expect(screen.getByText("Report").closest("section")?.classList.contains("max-w-[52rem]")).toBe(true);
+  });
+
   it("renders the report body with the marker stripped and figures resolved", () => {
     const { container } = draw(data([bundle({})]));
     expect(screen.getByText("Report")).toBeTruthy();

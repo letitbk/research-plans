@@ -167,7 +167,7 @@ export default function Reports({
   const reportBody = rep && parsed && (
     <section
       ref={reportBodyRef}
-      className="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
+      className="max-w-[52rem] rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-6"
       data-annot-scope="published-report"
       data-annot-section="published report"
     >
