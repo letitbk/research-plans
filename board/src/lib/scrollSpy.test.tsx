@@ -1,121 +1,134 @@
 // @vitest-environment jsdom
-import { useRef } from "react";
+// The spy computes from live geometry on scroll ticks (see scrollSpy.ts for
+// why IntersectionObserver was abandoned: threshold crossings never fire on a
+// jump-scroll) — tests mock getBoundingClientRect per heading and dispatch
+// window scroll events.
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { useScrollSpy } from "./scrollSpy";
 
-interface ObserverHarness {
-  callback: IntersectionObserverCallback;
-  observe: ReturnType<typeof vi.fn>;
-  disconnect: ReturnType<typeof vi.fn>;
+function rect(top: number): DOMRect {
+  return {
+    top, bottom: top + 30, left: 0, right: 100, width: 100, height: 30,
+    x: 0, y: top, toJSON: () => ({}),
+  } as DOMRect;
 }
 
-let observers: ObserverHarness[] = [];
+function makeHost(headings: Array<{ id: string; top: number }>) {
+  const host = document.createElement("div");
+  for (const h of headings) {
+    const el = document.createElement("h2");
+    el.setAttribute("data-outline-id", h.id);
+    el.getBoundingClientRect = () => rect(h.top);
+    host.appendChild(el);
+  }
+  document.body.appendChild(host);
+  return host;
+}
+
+function setTop(host: HTMLElement, id: string, top: number) {
+  const el = host.querySelector(`[data-outline-id="${id}"]`) as HTMLElement;
+  el.getBoundingClientRect = () => rect(top);
+}
+
+function hostRef(host: HTMLElement) {
+  const ref = createRef<HTMLElement>();
+  (ref as { current: HTMLElement }).current = host;
+  return ref;
+}
+
+async function scrollTick() {
+  await act(async () => {
+    window.dispatchEvent(new Event("scroll"));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
 
 beforeEach(() => {
-  observers = [];
-  vi.stubGlobal(
-    "IntersectionObserver",
-    vi.fn((callback: IntersectionObserverCallback) => {
-      const harness = {
-        callback,
-        observe: vi.fn(),
-        disconnect: vi.fn(),
-      };
-      observers.push(harness);
-      return harness;
-    }),
-  );
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 });
 });
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
+  document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
-function Harness({
-  docKey = "one",
-  selector = "[data-outline-id]",
-}: {
-  docKey?: string;
-  selector?: string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const active = useScrollSpy(ref, selector, [docKey]);
-  return (
-    <>
-      <div ref={ref}>
-        <h2 data-outline-id="context">Context</h2>
-        <h3>Nested detail</h3>
-        <h2 data-outline-id="decisions">Decisions</h2>
-      </div>
-      <output aria-label="active heading">{active?.textContent ?? "none"}</output>
-    </>
-  );
-}
-
-function entry(target: Element, isIntersecting: boolean, top = 0): IntersectionObserverEntry {
-  return {
-    target,
-    isIntersecting,
-    boundingClientRect: { top } as DOMRectReadOnly,
-  } as IntersectionObserverEntry;
-}
-
 describe("useScrollSpy", () => {
-  it("reports the last heading that passed the reading band", () => {
-    const { container } = render(<Harness />);
-    const headings = container.querySelectorAll("[data-outline-id]");
+  it("reports the last heading whose top rose above the reading band", async () => {
+    const host = makeHost([{ id: "A", top: 500 }, { id: "B", top: 900 }]);
+    const { result } = renderHook(() =>
+      useScrollSpy(hostRef(host), "[data-outline-id]", ["doc1"]));
+    expect(result.current).toBeNull(); // nothing above the 300px band yet
 
-    act(() => observers[0].callback(
-      [entry(headings[0], true), entry(headings[1], true)],
-      observers[0] as unknown as IntersectionObserver,
-    ));
+    setTop(host, "A", -100); // scrolled past A
+    await scrollTick();
+    expect(result.current?.getAttribute("data-outline-id")).toBe("A");
 
-    expect(screen.getByRole("status", { name: "active heading" }).textContent).toBe("Decisions");
+    setTop(host, "B", 100); // B now inside the band
+    await scrollTick();
+    expect(result.current?.getAttribute("data-outline-id")).toBe("B");
   });
 
-  it("returns null before any heading has been seen", () => {
-    render(<Harness />);
-
-    expect(screen.getByRole("status", { name: "active heading" }).textContent).toBe("none");
+  it("handles a jump-scroll past everything (the IntersectionObserver failure case)", async () => {
+    const host = makeHost([{ id: "A", top: 500 }, { id: "B", top: 2000 }]);
+    const { result } = renderHook(() =>
+      useScrollSpy(hostRef(host), "[data-outline-id]", ["doc1"]));
+    // One giant jump: both headings teleport far above the viewport between
+    // two frames — the case where IO's threshold crossings never fire.
+    setTop(host, "A", -1600);
+    setTop(host, "B", -100);
+    await scrollTick();
+    expect(result.current?.getAttribute("data-outline-id")).toBe("B");
   });
 
-  it("resets to null when dependencies change", () => {
-    const { container, rerender } = render(<Harness docKey="one" />);
-    const heading = container.querySelector("[data-outline-id]")!;
-    act(() => observers[0].callback(
-      [entry(heading, true)],
-      observers[0] as unknown as IntersectionObserver,
-    ));
-    expect(screen.getByRole("status", { name: "active heading" }).textContent).toBe("Context");
-
-    rerender(<Harness docKey="two" />);
-
-    expect(screen.getByRole("status", { name: "active heading" }).textContent).toBe("none");
-    expect(observers).toHaveLength(2);
+  it("moves back up when scrolling toward the top", async () => {
+    const host = makeHost([{ id: "A", top: -500 }, { id: "B", top: -100 }]);
+    const { result } = renderHook(() =>
+      useScrollSpy(hostRef(host), "[data-outline-id]", ["doc1"]));
+    await scrollTick();
+    expect(result.current?.getAttribute("data-outline-id")).toBe("B");
+    setTop(host, "A", 500);
+    setTop(host, "B", 900);
+    await scrollTick();
+    expect(result.current).toBeNull();
   });
 
-  it("observes only elements matching the selector", () => {
-    const { container } = render(<Harness />);
-    const h2s = container.querySelectorAll("[data-outline-id]");
-    const h3 = screen.getByRole("heading", { level: 3 });
-
-    expect(observers[0].observe).toHaveBeenCalledTimes(2);
-    expect(observers[0].observe).not.toHaveBeenCalledWith(h3);
-    act(() => observers[0].callback(
-      [entry(h2s[0], true), entry(h3, true)],
-      observers[0] as unknown as IntersectionObserver,
-    ));
-    expect(screen.getByRole("status", { name: "active heading" }).textContent).toBe("Context");
+  it("resets to null when deps change (document switch)", async () => {
+    const host = makeHost([{ id: "A", top: -100 }]);
+    const ref = hostRef(host);
+    const { result, rerender } = renderHook(
+      ({ dep }) => useScrollSpy(ref, "[data-outline-id]", [dep]),
+      { initialProps: { dep: "doc1" } },
+    );
+    await scrollTick();
+    expect(result.current).not.toBeNull();
+    host.innerHTML = ""; // the new document has no headings yet
+    rerender({ dep: "doc2" });
+    expect(result.current).toBeNull();
   });
 
-  it("disconnects the observer on unmount", () => {
-    const { unmount } = render(<Harness />);
-    const observer = observers[0];
+  it("only considers elements matching the selector", async () => {
+    const host = makeHost([{ id: "A", top: -100 }]);
+    const h3 = document.createElement("h3"); // no data-outline-id — must be ignored
+    h3.getBoundingClientRect = () => rect(-50);
+    host.appendChild(h3);
+    const { result } = renderHook(() =>
+      useScrollSpy(hostRef(host), "[data-outline-id]", ["doc1"]));
+    await scrollTick();
+    expect(result.current?.getAttribute("data-outline-id")).toBe("A");
+  });
 
+  it("removes its listeners on unmount", () => {
+    const host = makeHost([{ id: "A", top: 500 }]);
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    const { unmount } = renderHook(() =>
+      useScrollSpy(hostRef(host), "[data-outline-id]", ["doc1"]));
     unmount();
-
-    expect(observer.disconnect).toHaveBeenCalledTimes(1);
+    const removed = removeSpy.mock.calls.map((c) => c[0]);
+    expect(removed).toContain("scroll");
+    expect(removed).toContain("resize");
   });
 });
