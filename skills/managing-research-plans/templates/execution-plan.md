@@ -14,8 +14,12 @@ Supersedes: v<N-1> — <one line: what changed and why>
      WRITE IT SHORT. A plan is read cold by a coauthor, so plain language and brevity win:
      carry only what the rubric scores — the goal, the consequential decisions with their
      reasons, the approach and steps, how success is validated, and the boundaries — and
-     nothing else (no speculation about results, no boilerplate, no padding). Push low-level
-     how (code, exact commands, dense technical detail) into collapsible agent-detail blocks:
+     nothing else (no speculation about results, no boilerplate, no padding). Visual emphasis
+     is part of readability: **bold** the decision keyword in each Decisions row and each build
+     step's verb phrase; *italics* for rationale asides. Keep paragraphs under ~4 lines. One
+     sentence per build step, elaboration in an indented follow-up line — the board renders
+     Build steps as numbered cards. Push low-level how (code, exact commands, dense technical
+     detail) into collapsible agent-detail blocks:
 
        <details class="agent-detail"><summary>Agent detail — exact commands</summary>
 
