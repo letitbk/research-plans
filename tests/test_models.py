@@ -610,5 +610,17 @@ class TestAtomicWrite(unittest.TestCase):
             self.assertEqual(p.read_text(encoding="utf-8"), DEFAULT_PROFILE)
 
 
+class TestReviewDiscipline(unittest.TestCase):
+    def test_templates_carry_review_discipline(self):
+        tdir = SCRIPTS.parent / "templates" / "agents"
+        board = (tdir / "rp-board-reviewer.md").read_text(encoding="utf-8")
+        for marker in ("[blocker]", "[major]", "[minor]",
+                       "Ground every claim", "Verify before returning"):
+            self.assertIn(marker, board)
+        for name in ("rp-plan-reviewer.md", "rp-results-validator.md"):
+            text = (tdir / name).read_text(encoding="utf-8")
+            self.assertIn("Verify before returning", text)
+
+
 if __name__ == "__main__":
     unittest.main()
