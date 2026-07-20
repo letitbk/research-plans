@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1] - 2026-07-20
+
+Highlight-and-comment works again. Saving a comment on the board has been silently failing since v0.19.0; update and reopen your boards.
+
+### Fixed
+- **Comments save again.** On the board, selecting text and pressing **Save comment** did nothing: the comment never reached the feedback panel, and afterwards no Comment button appeared on any further selection until the page was reloaded. The comment popup was clearing the very text selection it was attached to, so it unmounted before its own click landed. Sometimes the Comment button swallowed its own first click for the same reason. Existing boards need to be reopened to pick up the fix.
+
 ## [0.24.0] - 2026-07-19
 
 Open the board without Claude. A mechanical `rp-board` launcher lets you reach the board when the Claude session is rate-limited — no model in the loop, and no shell setup.
