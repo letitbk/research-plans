@@ -102,13 +102,16 @@ export default function AnnotationLayer({
   }, [composing]);
 
   const handleMouseUp = useCallback(() => {
+    // Only the composer knows when it is done; a mouseup while it is open is
+    // the user clicking its own buttons, not clearing their selection.
+    if (composing) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) {
       setPending(null);
       return;
     }
     captureSelection();
-  }, [captureSelection]);
+  }, [captureSelection, composing]);
 
   useEffect(() => {
     document.addEventListener("selectionchange", captureSelection);
@@ -134,8 +137,13 @@ export default function AnnotationLayer({
   };
 
   return (
-    <div className="relative" onMouseUp={handleMouseUp}>
-      <div ref={containerRef}>{children}</div>
+    <div className="relative">
+      {/* The listener sits on the content, not the wrapper: a mouseup on the
+       * Comment button or the composer is a click on our own UI, and clearing
+       * the pending anchor there unmounts the target before its click lands. */}
+      <div ref={containerRef} onMouseUp={handleMouseUp}>
+        {children}
+      </div>
 
       {pending && !composing && (
         <button
