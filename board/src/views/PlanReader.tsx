@@ -318,6 +318,13 @@ export default function PlanReader({
     return matches.length === 1 ? matches[0] : null;
   }, [doc, data.files.reviews]);
 
+  const [globalOpen, setGlobalOpen] = useState(false);
+  const [globalText, setGlobalText] = useState("");
+  useEffect(() => {
+    setGlobalOpen(false);
+    setGlobalText("");
+  }, [doc?.path]);
+
   if (!group || !doc) {
     return (
       <div className="rounded-lg border border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 p-10 text-center text-sm text-stone-500">
@@ -335,12 +342,6 @@ export default function PlanReader({
   // never annotated. Feedback routing must not touch an immutable snapshot.
   const annotatable = canAnnotate && doc.docKind !== "draftSnapshot";
 
-  const [globalOpen, setGlobalOpen] = useState(false);
-  const [globalText, setGlobalText] = useState("");
-  useEffect(() => {
-    setGlobalOpen(false);
-    setGlobalText("");
-  }, [doc.path]);
   const saveGlobal = () => {
     if (!globalText.trim()) return;
     onAddPlanComment({
