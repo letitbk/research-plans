@@ -272,10 +272,10 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
             key={a.id}
             a={a}
             onOpen={p.onCardClick ? () => p.onCardClick!(a) : undefined}
-            onDelete={() => p.onRemove(a.id)}
+            onDelete={editingId === null ? () => p.onRemove(a.id) : undefined}
             editing={editingId === a.id}
             draft={editingId === a.id ? draft : undefined}
-            onEditStart={() => { setEditingId(a.id); setDraft(a.comment); }}
+            onEditStart={editingId === null ? () => { setEditingId(a.id); setDraft(a.comment); } : undefined}
             onEditChange={setDraft}
             onEditSave={() => { if (draft.trim()) { p.onEdit(a.id, draft.trim()); setEditingId(null); } }}
             onEditCancel={() => setEditingId(null)}

@@ -41,6 +41,17 @@ describe("FeedbackPanel edit unsent comments", () => {
     expect((screen.getByRole("button", { name: /Send to Claude/ }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("freezes Edit/Delete on all cards while an edit is open", () => {
+    render(
+      <FeedbackPanel
+        {...props({ annotations: [comment("a1", "first"), comment("a2", "second")] })}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+    expect(screen.queryByTitle("Delete")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
   it("shows no Edit button on sent (serverLive) comments", () => {
     render(
       <FeedbackPanel
