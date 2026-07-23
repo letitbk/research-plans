@@ -121,6 +121,19 @@ class CheckPullRequestPolicy(unittest.TestCase):
         self.assertFalse(result.version_changed)
         self.assertEqual(result.shipped_paths, ())
 
+    def test_hosted_board_lockfile_refresh_keeps_version(self):
+        self.repo.write(
+            "skills/managing-planboard/assets/web-template/.gitignore",
+            "node_modules/\n",
+        )
+        self.repo.write(
+            "skills/managing-planboard/assets/web-template/package-lock.json",
+            "{}\n",
+        )
+        result = self.check(self.repo.commit("hosted board lockfile"))
+        self.assertFalse(result.version_changed)
+        self.assertEqual(result.shipped_paths, ())
+
     def test_next_patch_release_passes(self):
         result = self.check(self.repo.make_release("1.0.1"))
         self.assertTrue(result.version_changed)

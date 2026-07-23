@@ -33,13 +33,15 @@ TEST_FILE_RE = re.compile(
     re.IGNORECASE,
 )
 
-ROOT_MAINTENANCE_FILES = {
+MAINTENANCE_FILES = {
     ".gitignore",
     "AGENTS.md",
     "CHANGELOG.md",
     "LICENSE",
     "QUICKSTART.md",
     "README.md",
+    "skills/managing-planboard/assets/web-template/.gitignore",
+    "skills/managing-planboard/assets/web-template/package-lock.json",
 }
 VERSION_FILES = (
     ".claude-plugin/plugin.json",
@@ -147,7 +149,7 @@ def changed_paths(repo: Path, base: str, head: str) -> Tuple[str, ...]:
 
 def is_maintenance_path(path: str) -> bool:
     normalized = PurePosixPath(path).as_posix()
-    if normalized in ROOT_MAINTENANCE_FILES:
+    if normalized in MAINTENANCE_FILES:
         return True
     if normalized == "scripts/check_pr_policy.py":
         return True
