@@ -21,7 +21,7 @@ class TestInitPortabilityDocs(unittest.TestCase):
 
         self.assertIn("AskUserQuestion is unavailable", command)
         self.assertIn("create nothing", command)
-        self.assertIn("/research-plans:init Project:", command)
+        self.assertIn("/planboard:init Project:", command)
         for field in ("RQs:", "source=", "rough size=", "sensitivity=",
                       "constraints/deadlines=", "target journal=",
                       "model profile=", "reader detail="):
@@ -40,7 +40,7 @@ class TestBoardReviewerPortabilityDocs(unittest.TestCase):
 
 class TestSignTransactionDocs(unittest.TestCase):
     def test_sign_reference_names_the_shared_procedures(self):
-        reference = (REPO / "skills" / "managing-research-plans" /
+        reference = (REPO / "skills" / "managing-planboard" /
                      "references" / "sign-off.md").read_text(encoding="utf-8")
 
         for heading in ("## The finalization transaction",
@@ -53,7 +53,7 @@ class TestSignTransactionDocs(unittest.TestCase):
     def test_plan_leaves_a_scored_pending_draft(self):
         command = (REPO / "commands" / "plan.md").read_text(encoding="utf-8")
 
-        self.assertIn("draft ready — it signs at /research-plans:execute", command)
+        self.assertIn("draft ready — it signs at /planboard:execute", command)
         self.assertIn("link it to the draft path", command)
         self.assertNotIn("--gate-batch", command)
         self.assertNotIn("clicks **Approve**", command)
@@ -93,9 +93,9 @@ class TestSignTransactionDocs(unittest.TestCase):
 
     def test_results_uses_the_governing_canonical_version(self):
         command = (REPO / "commands" / "results.md").read_text(encoding="utf-8")
-        validator = (REPO / "skills" / "managing-research-plans" /
+        validator = (REPO / "skills" / "managing-planboard" /
                      "templates" / "agents" /
-                     "rp-results-validator.md").read_text(encoding="utf-8")
+                     "pb-results-validator.md").read_text(encoding="utf-8")
 
         self.assertIn("governing plan version", command)
         self.assertIn("valid signed or amendment trailer", command)

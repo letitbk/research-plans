@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""research-plans board: serve or export the project board.
+"""planboard: serve or export the project board.
 
 Stdlib only, Python 3.9+. Modes:
   (default)          serve the live board; block until feedback; print it to stdout
@@ -85,8 +85,10 @@ SLOT_OPEN = '<script id="board-data" type="application/json">'
 GITIGNORE_LINES = [
     "/.board-feedback.md",
     "/.board-feedback.md.tmp",
-    "/.rp-seed-*.json",
-    "/.rp-review-*.txt",
+    "/.pb-seed-*.json",
+    "/.pb-review-*.txt",
+    "/.rp-seed-*.json",   # legacy temp patterns — kept so a pre-rename leftover
+    "/.rp-review-*.txt",  # from an interrupted run stays ignored
     "/.board.lock",
     "/board-share.html",
     "/execution/*/.draft-v*.md",
@@ -111,8 +113,14 @@ def web_project_hash(root):
 
 def _web_data_dir():
     base = os.environ.get("CLAUDE_PLUGIN_DATA")
-    d = Path(base) / "web" if base else Path.home() / ".research-plans" / "web"
+    d = Path(base) / "web" if base else Path.home() / ".planboard" / "web"
     return d
+
+
+def _legacy_web_data_dir():
+    """Pre-rename home-dir location, read as a fallback so existing hosted-board
+    configs keep resolving. Only reachable when CLAUDE_PLUGIN_DATA is unset."""
+    return Path.home() / ".research-plans" / "web"
 
 
 def web_config_path(root):
@@ -120,11 +128,13 @@ def web_config_path(root):
 
 
 def read_web_config(root):
-    p = web_config_path(root)
-    try:
-        return json.loads(p.read_text())
-    except (OSError, ValueError):
-        return None
+    name = "%s.json" % web_project_hash(root)
+    for d in (_web_data_dir(), _legacy_web_data_dir()):
+        try:
+            return json.loads((d / name).read_text())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def write_web_config(root, cfg):
@@ -250,13 +260,15 @@ def fnv1a_hex(s):
     return format(h, "08x")
 
 
-REPORT_MARKER_PREFIX = "<!-- rp-report"
+REPORT_MARKER_PREFIX = "<!-- pb-report"
+# Dual-read: legacy reports carry `<!-- rp-report`, new reports `<!-- pb-report`.
+REPORT_MARKER_PREFIXES = ("<!-- pb-report", "<!-- rp-report")
 
 
 def _strip_report_marker(content):
-    """Drop the first line when it is (or tries to be) an rp-report marker."""
+    """Drop the first line when it is (or tries to be) a report marker."""
     first, sep, rest = content.partition("\n")
-    if first.lstrip().startswith(REPORT_MARKER_PREFIX):
+    if any(first.lstrip().startswith(p) for p in REPORT_MARKER_PREFIXES):
         return rest
     return content
 
@@ -491,7 +503,7 @@ def agents_gitignored(root):
     None when git is unavailable. Checks the three concrete files (not just the
     dir) so a rule targeting an individual agent is caught. Boot-time only."""
     paths = [f".claude/agents/{a}.md"
-             for a in ("rp-plan-reviewer", "rp-results-validator", "rp-board-reviewer")]
+             for a in ("pb-plan-reviewer", "pb-results-validator", "pb-board-reviewer")]
     try:
         r = subprocess.run(["git", "-C", str(root), "check-ignore", *paths],
                            capture_output=True, text=True, timeout=5)
@@ -678,7 +690,7 @@ def detail_level(master_content):
 def collect_payload(root, mode, focus):
     plans = root / "plans"
     if not (plans / "master-plan.md").is_file():
-        die("no plans/master-plan.md under %s — run /research-plans:init first" % root)
+        die("no plans/master-plan.md under %s — run /planboard:init first" % root)
 
     exec_groups = []
     exec_dir = plans / "execution"
@@ -848,7 +860,7 @@ def inject(template, payload):
 def template_path():
     p = Path(__file__).resolve().parent.parent / "assets" / "board-template.html"
     if not p.is_file():
-        die("board template missing at %s — reinstall the research-plans plugin" % p)
+        die("board template missing at %s — reinstall the planboard plugin" % p)
     return p
 
 
@@ -873,14 +885,18 @@ def project_id(root):
 
 
 # ---------------------------------------------------------------------------
-# Mechanical launcher (rp-board): a project-local script that opens the board
+# Mechanical launcher (pb-board): a project-local script that opens the board
 # with no LLM in the loop, so a researcher can reach it while the Claude
 # session is rate-limited. board.py writes it itself, so the interpreter and
 # board.py path are baked without any path-guessing.
 # ---------------------------------------------------------------------------
 
-LAUNCHER_NAME = "rp-board"
-LAUNCHER_MARKER = "rp-board-managed-launcher-v1"
+LAUNCHER_NAME = "pb-board"
+LAUNCHER_MARKER = "pb-board-managed-launcher-v1"
+# Pre-rename managed launcher, removed on the first pb-board write so a legacy
+# project doesn't end up with both ./rp-board and ./pb-board.
+LEGACY_LAUNCHER_NAME = "rp-board"
+LEGACY_LAUNCHER_MARKER = "rp-board-managed-launcher-v1"
 
 
 def launcher_script(board_path=None, interpreter=None):
@@ -893,7 +909,7 @@ def launcher_script(board_path=None, interpreter=None):
     return (
         "#!/bin/sh\n"
         "# %s\n"
-        "# research-plans: open the board with no Claude/LLM. Auto-generated; do not edit.\n"
+        "# planboard: open the board with no Claude/LLM. Auto-generated; do not edit.\n"
         'cd "$(dirname "$0")" || exit 1\n'
         'exec %s %s --project-root . --reuse "$@"\n'
         % (LAUNCHER_MARKER, shlex.quote(str(interpreter)), shlex.quote(str(board_path)))
@@ -920,7 +936,7 @@ def _git_exclude_path(root):
 
 
 def ensure_git_exclude(root):
-    """Add `/rp-board` to the repo's local exclude (no tracked-file churn).
+    """Add `/pb-board` to the repo's local exclude (no tracked-file churn).
     Idempotent; a no-op outside a git working tree."""
     excl = _git_exclude_path(root)
     if excl is None:
@@ -939,8 +955,22 @@ def ensure_git_exclude(root):
         pass  # non-fatal: the launcher still works, it is just not excluded
 
 
+def _remove_legacy_launcher(root):
+    """Remove a pre-rename managed ./rp-board so it doesn't sit beside pb-board.
+    Only removes a regular file carrying the legacy marker; never a symlink,
+    directory, or a user-authored file."""
+    lp = Path(root) / LEGACY_LAUNCHER_NAME
+    if lp.is_symlink() or not lp.is_file():
+        return
+    try:
+        if LEGACY_LAUNCHER_MARKER in lp.read_text(encoding="utf-8"):
+            lp.unlink()
+    except OSError:
+        pass
+
+
 def ensure_launcher(root, explicit=False):
-    """Write/refresh <root>/rp-board and exclude it from git. Returns a status
+    """Write/refresh <root>/pb-board and exclude it from git. Returns a status
     string: created / refreshed / unchanged / skipped:<reason>.
 
     Never destructive: only a regular file carrying LAUNCHER_MARKER is replaced.
@@ -973,6 +1003,7 @@ def ensure_launcher(root, explicit=False):
         has_x = os.access(lp, os.X_OK)
         if current == desired and has_x:
             ensure_git_exclude(root)
+            _remove_legacy_launcher(root)
             return "unchanged"
         status = "refreshed"
     else:
@@ -994,6 +1025,7 @@ def ensure_launcher(root, explicit=False):
               % (lp, e), file=sys.stderr)
         return "skipped:write-error"
     ensure_git_exclude(root)
+    _remove_legacy_launcher(root)
     if status == "created":
         print("board: wrote ./%s — open the board without Claude by running ./%s"
               % (LAUNCHER_NAME, LAUNCHER_NAME), file=sys.stderr)
@@ -1016,7 +1048,9 @@ def healthy_running_board(root):
             data = json.loads(r.read().decode("utf-8"))
     except (urllib.error.URLError, OSError, ValueError):
         return None
-    if (data.get("app") == "research-plans-board"
+    # Dual-accept the app id so a new `pb-board --reuse` reconnects to a still-
+    # running old server (correctness is keyed on projectId, not the app id).
+    if (data.get("app") in ("planboard-board", "research-plans-board")
             and data.get("projectId") == project_id(root)):
         return port
     return None
@@ -1264,7 +1298,7 @@ def serve(root, payload, args):
     amap = artifact_map(root, payload)
     rmap = report_map(root, payload)
     publish_token = hashlib.sha256(os.urandom(32)).hexdigest()
-    payload["publishToken"] = publish_token  # board reads window.__RP_PUBLISH_TOKEN__ from this
+    payload["publishToken"] = publish_token  # board reads publishToken from the payload JSON
     payload["projectId"] = project_id(root)
     proj_id = payload["projectId"]
     board_token = hashlib.sha256(os.urandom(32)).hexdigest()
@@ -1356,7 +1390,7 @@ def serve(root, payload, args):
                 self.end_headers()
                 return
             if self.path == "/api/health":
-                self._json(200, {"ok": True, "app": "research-plans-board",
+                self._json(200, {"ok": True, "app": "planboard-board",
                                  "bootId": boot_id, "generation": generation,
                                  "projectId": proj_id}, no_store=True)
                 return
@@ -1814,7 +1848,7 @@ def publish_web(root, args):
     cfg = read_web_config(root)
     if cfg is None:
         die("No web board configured yet. First-run setup is interactive (it needs "
-            "`vercel login` in your own terminal). Run /research-plans:board --publish-web "
+            "`vercel login` in your own terminal). Run /planboard:board --publish-web "
             "in Claude Code, which walks you through signup, login, and the first deploy.")
     out = materialize_web_dir(root)
     rc, deploy_out = _vercel(["deploy", "--prod", "--yes"], cwd=str(out))
@@ -1825,7 +1859,7 @@ def publish_web(root, args):
     print("Published to %s" % url)
     print("  password: the one you set (share it in a separate message)")
     if unpulled:
-        print("  %d new comment%s waiting — run /research-plans:board --pull"
+        print("  %d new comment%s waiting — run /planboard:board --pull"
               % (unpulled, "" if unpulled == 1 else "s"))
 
 
@@ -1842,17 +1876,17 @@ def pull(root, args):
             p.unlink()
     cfg = read_web_config(root)
     if cfg is None:
-        die("No web board configured. Run /research-plans:board --publish-web first.")
+        die("No web board configured. Run /planboard:board --publish-web first.")
     if not cfg.get("url"):
         die("The local config has no board URL (BOARD_URL was missing from the project "
-            "env when --web-connect ran). Run /research-plans:board --publish-web once — "
+            "env when --web-connect ran). Run /planboard:board --publish-web once — "
             "it records the URL — then retry.")
     url = cfg["url"].rstrip("/") + "/api/comments"
     try:
         data = _http_get_json(url, {"x-board-key": cfg["pullKey"]})
     except urllib.error.HTTPError as e:
         if e.code == 401:
-            die("Pull key rejected (rotated or reset). Run /research-plans:board --web-connect.")
+            die("Pull key rejected (rotated or reset). Run /planboard:board --web-connect.")
         die("Web board returned %s. It may be misconfigured; try --publish-web again." % e.code)
     except (urllib.error.URLError, OSError):
         die("Web board unreachable (the project may be deleted). Run --publish-web to recreate, "
@@ -1959,7 +1993,7 @@ def web_clear(root, args):
         die("This deletes ALL collaborator comments on the hosted board. Re-run with --force.")
     if not cfg.get("url"):
         die("The local config has no board URL (BOARD_URL was missing from the project "
-            "env when --web-connect ran). Run /research-plans:board --publish-web once — "
+            "env when --web-connect ran). Run /planboard:board --publish-web once — "
             "it records the URL — then retry.")
     url = cfg["url"].rstrip("/") + "/api/clear"
     try:
@@ -1979,7 +2013,7 @@ def set_password(root, args):
         die("No web board configured. Run --publish-web first.")
     print("Rotate the passphrase from the conversational flow: it generates a new "
           "passphrase and BOARD_SESSION_SECRET, sets them with `vercel env add` "
-          "(reading from stdin), and redeploys. See /research-plans:board.")
+          "(reading from stdin), and redeploys. See /planboard:board.")
 
 
 def export(root, args):
@@ -2033,7 +2067,7 @@ def share(root, args):
 
 # --- GitHub Pages publish (feature #4) ---
 
-TMP_BRANCH_PREFIX = "_rp_pages_"  # per-run throwaway branch backing the publish worktree
+TMP_BRANCH_PREFIX = "_pb_pages_"  # per-run throwaway branch backing the publish worktree
 # github.com must be the HOST (right after an optional scheme and userinfo), not
 # merely appear somewhere in the URL/path — so git.example.com/github.com/... is rejected.
 GITHUB_RE = re.compile(
@@ -2042,7 +2076,7 @@ GITHUB_RE = re.compile(
 _VOLATILE_RE = re.compile(r'"generatedAt":\s*"[^"]*"')
 INDEX_REDIRECT = (
     '<!doctype html>\n<meta charset="utf-8">\n'
-    "<title>research-plans board</title>\n"
+    "<title>planboard</title>\n"
     '<meta http-equiv="refresh" content="0; url=board.html">\n'
     '<a href="board.html">Open the board</a>\n'
 )
@@ -2092,7 +2126,7 @@ def publish_to_branch(root, files, branch, message):
         root, ["show-ref", "--verify", "--quiet", "refs/remotes/origin/%s" % branch],
         check=False,
     ).returncode == 0
-    tmp = tempfile.mkdtemp(prefix="rp-pages-")
+    tmp = tempfile.mkdtemp(prefix="pb-pages-")
     try:
         if has_remote:
             _git(root, ["worktree", "add", "-B", tmp_branch, tmp, "origin/%s" % branch])
@@ -2168,7 +2202,7 @@ def publish_pages(root, args):
     html = render_static_html(root, None)  # v1 publishes the full board (no --focus)
     outcome = publish_to_branch(
         root, {"board.html": html, "index.html": INDEX_REDIRECT},
-        "gh-pages", "Publish research-plans board",
+        "gh-pages", "Publish planboard",
     )
     url = "https://%s.github.io/%s/" % (owner, repo)
     enabled = _pages_enabled(owner, repo)
@@ -2769,7 +2803,7 @@ def load_seed_annotations(path):
 
 
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser(description="research-plans board")
+    ap = argparse.ArgumentParser(description="planboard")
     ap.add_argument("--focus", default=None, metavar="NN-slug")
     ap.add_argument("--export", nargs="?", const="DEFAULT", default=None, metavar="PATH")
     ap.add_argument("--share", nargs="?", const="DEFAULT", default=None, metavar="PATH")
@@ -2798,10 +2832,10 @@ def parse_args(argv=None):
     ap.add_argument("--web-clear", action="store_true")
     ap.add_argument("--set-password", action="store_true")
     ap.add_argument("--install-launcher", action="store_true",
-                    help="write the mechanical ./rp-board launcher and exit")
+                    help="write the mechanical ./pb-board launcher and exit")
     ap.add_argument("--project-root", default=None, metavar="DIR",
                     help="use DIR as the project root instead of inferring it "
-                         "(the rp-board launcher passes --project-root .)")
+                         "(the pb-board launcher passes --project-root .)")
     ap.add_argument("--reuse", action="store_true",
                     help="on a plain-live launch, open an already-running board "
                          "for this project instead of failing or double-serving")
@@ -2837,7 +2871,7 @@ def main():
     check_action_exclusivity(args)
 
     if args.project_root:
-        # The rp-board launcher passes --project-root . after cd'ing to its own
+        # The pb-board launcher passes --project-root . after cd'ing to its own
         # dir, pinning the board to THIS project even when a parent git repo also
         # has plans/ (find_root() would otherwise prefer the git toplevel).
         root = Path(args.project_root).resolve()
@@ -2850,7 +2884,7 @@ def main():
             if (Path.cwd() / "plans" / "master-plan.md").is_file():
                 root = Path.cwd()
             else:
-                die("no plans/master-plan.md found — run /research-plans:init first")
+                die("no plans/master-plan.md found — run /planboard:init first")
 
     if args.collect is not None:
         if args.collect == "PENDING":
@@ -2885,6 +2919,9 @@ def main():
         plain_live = not args.gate and args.sign is None
         if plain_live:
             ensure_launcher(root)
+            # Opening the board migrates pre-rename rp-* review agents to pb-* so
+            # a legacy project's model/effort pins survive the planboard rename.
+            models.migrate_legacy_agents(root)
             if args.reuse:
                 port = healthy_running_board(root)
                 if port is not None:

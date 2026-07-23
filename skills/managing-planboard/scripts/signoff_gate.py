@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""research-plans sign-off gate (PreToolUse hook for Write|Edit).
+"""planboard sign-off gate (PreToolUse hook for Write|Edit).
 
 Blocks the write of a signed plan version (plans/execution/<slug>/vN.md in an
 initialized project) until the researcher approves it on the board in their
@@ -27,8 +27,18 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r"^v(\d+)\.md$")
 RESULTS_RE = re.compile(r"/plans/execution/([^/]+)/results/(r\d+)/")
-MASTER_MARKER = "<!-- research-plans:master-plan -->"
-CLAUDE_MARKER = "<!-- research-plans:start -->"
+# Content markers are dual-recognized: the new `planboard:` form is written going
+# forward, the legacy `research-plans:` form is still accepted so already-initialized
+# projects keep gating. NEVER drop the legacy entries — find_project_root fails OPEN,
+# so an unrecognized marker silently disables every gate that rides it.
+MASTER_MARKERS = (
+    "<!-- planboard:master-plan -->",
+    "<!-- research-plans:master-plan -->",
+)
+CLAUDE_MARKERS = (
+    "<!-- planboard:start -->",
+    "<!-- research-plans:start -->",
+)
 TICKET_PREFIX = ".import-approved-"
 ORDER_FENCE_RE = re.compile(r"```json board-feedback\n(.*?)\n```", re.DOTALL)
 DEFAULT_TIMEOUT = 1500
@@ -119,18 +129,18 @@ def check_ticket(ticket, slug, version, content):
     except (OSError, ValueError):
         return "deny", (
             "Approval ticket %s is unreadable or corrupt. Run "
-            "/research-plans:sign %s to replace it with a fresh ticket "
+            "/planboard:sign %s to replace it with a fresh ticket "
             "(the draft must still exist at plans/execution/%s/"
             ".draft-v%d.md)." % (ticket.name, slug, slug, version))
     if doc.get("slug") != slug or doc.get("version") != version:
         return "deny", (
             "Sign ticket %s does not match %s v%d (slug/version mismatch). "
-            "Run /research-plans:sign %s to sign this plan again."
+            "Run /planboard:sign %s to sign this plan again."
             % (ticket.name, slug, version, slug))
     exp = doc.get("expiry")
     if isinstance(exp, (int, float)) and time.time() > exp:
         return "deny", (
-            "Approval for %s v%d has expired. Run /research-plans:sign %s to "
+            "Approval for %s v%d has expired. Run /planboard:sign %s to "
             "sign the current draft again." % (slug, version, slug))
     action_id = doc.get("orderActionId")
     if isinstance(action_id, str):
@@ -144,13 +154,13 @@ def check_ticket(ticket, slug, version, content):
             return "deny", (
                 "Approval ticket %s is not bound to the current pending board "
                 "order. Collect and acknowledge any existing order, then run "
-                "/research-plans:sign %s to sign v%d again."
+                "/planboard:sign %s to sign v%d again."
                 % (ticket.name, slug, version))
     got = hashlib.sha256(normalize_plan(content).encode("utf-8")).hexdigest()
     if doc.get("contentHash") != got:
         return "deny", (
             "The draft for %s v%d changed since it was approved (content-hash "
-            "mismatch). Run /research-plans:sign %s to sign the current draft "
+            "mismatch). Run /planboard:sign %s to sign the current draft "
             "again." % (slug, version, slug))
     return "allow", (
         "Sign-session approved: %s v%d approved by %s in session %s at %s "
@@ -183,13 +193,27 @@ def deny(reason):
     decide("deny", reason)
 
 
+def _env(name, default=""):
+    """Read PLANBOARD_<name>, falling back to the legacy RESEARCH_PLANS_<name>."""
+    v = os.environ.get("PLANBOARD_" + name)
+    if v is None:
+        v = os.environ.get("RESEARCH_PLANS_" + name)
+    return default if v is None else v
+
+
 def gate_timeout():
-    raw = os.environ.get("RESEARCH_PLANS_GATE_TIMEOUT", "")
-    try:
-        val = int(raw)
-    except ValueError:
-        return DEFAULT_TIMEOUT
-    return max(30, min(val, DEFAULT_TIMEOUT))
+    # Precedence: new PLANBOARD_ first, then legacy RESEARCH_PLANS_; a malformed
+    # value falls through to the next source rather than silently forcing default.
+    for name in ("PLANBOARD_GATE_TIMEOUT", "RESEARCH_PLANS_GATE_TIMEOUT"):
+        raw = os.environ.get(name)
+        if raw is None:
+            continue
+        try:
+            val = int(raw)
+        except ValueError:
+            continue
+        return max(30, min(val, DEFAULT_TIMEOUT))
+    return DEFAULT_TIMEOUT
 
 
 def find_project_root(path):
@@ -198,13 +222,14 @@ def find_project_root(path):
         mp = parent / "plans" / "master-plan.md"
         if mp.is_file():
             try:
-                if MASTER_MARKER not in mp.read_text(encoding="utf-8", errors="replace"):
+                text = mp.read_text(encoding="utf-8", errors="replace")
+                if not any(mk in text for mk in MASTER_MARKERS):
                     return None
                 cm = parent / "CLAUDE.md"
-                if cm.is_file() and CLAUDE_MARKER in cm.read_text(
-                    encoding="utf-8", errors="replace"
-                ):
-                    return parent
+                if cm.is_file():
+                    ctext = cm.read_text(encoding="utf-8", errors="replace")
+                    if any(mk in ctext for mk in CLAUDE_MARKERS):
+                        return parent
             except OSError:
                 return None
             return None
@@ -222,7 +247,7 @@ def main():
     except Exception:
         if "/plans/execution/" in raw:
             print(
-                "research-plans gate: unparseable hook payload, write not gated",
+                "planboard gate: unparseable hook payload, write not gated",
                 file=sys.stderr,
             )
         sys.exit(0)
@@ -239,9 +264,9 @@ def main():
     # the board — a browser gate here would deadlock capture). ----
     res_m = RESULTS_RE.search(str(p))
     if res_m:
-        if os.environ.get("RESEARCH_PLANS_NO_GATE", "") == "1":
+        if _env("NO_GATE", "") == "1":
             print(
-                "research-plans: results immutability bypassed by "
+                "planboard: results immutability bypassed by "
                 "RESEARCH_PLANS_NO_GATE for %s" % p.name,
                 file=sys.stderr,
             )
@@ -279,9 +304,9 @@ def main():
     # policy like the results branch — never opens a browser. Creation (the
     # renewal's own archive write) is allowed; edits and overwrites are denied. ----
     if p.parent.name == "archive" and p.parent.parent.name == "plans":
-        if os.environ.get("RESEARCH_PLANS_NO_GATE", "") == "1":
+        if _env("NO_GATE", "") == "1":
             print(
-                "research-plans: archive immutability bypassed by "
+                "planboard: archive immutability bypassed by "
                 "RESEARCH_PLANS_NO_GATE for %s" % p.name,
                 file=sys.stderr,
             )
@@ -291,7 +316,7 @@ def main():
         if tool_name == "Edit" or p.exists():
             deny(
                 "Archived master plans are immutable — %s is the record of a "
-                "direction this project renewed away from. /research-plans:renew "
+                "direction this project renewed away from. /planboard:renew "
                 "creates archives; nothing edits them." % p.name
             )
         sys.exit(0)
@@ -309,7 +334,7 @@ def main():
             deny(
                 "Sign-session approval tickets (%s*) are created only by "
                 "board.py --sign, never written directly. Run "
-                "/research-plans:sign; the ticket is written for you."
+                "/planboard:sign; the ticket is written for you."
                 % TICKET_PREFIX
             )
         sys.exit(0)
@@ -324,9 +349,9 @@ def main():
     version = int(m.group(1))
     slug = p.parent.name
 
-    if os.environ.get("RESEARCH_PLANS_NO_GATE", "") == "1":
+    if _env("NO_GATE", "") == "1":
         print(
-            "research-plans: sign-off gate bypassed by RESEARCH_PLANS_NO_GATE for %s"
+            "planboard: sign-off gate bypassed by RESEARCH_PLANS_NO_GATE for %s"
             % p.name,
             file=sys.stderr,
         )
@@ -370,7 +395,7 @@ def main():
             deny(
                 "Amendment versions record revisions of an existing plan — "
                 "v%d.md does not exist. A first or gap version needs a human "
-                "sign-off: run /research-plans:sign %s." % (version - 1, slug)
+                "sign-off: run /planboard:sign %s." % (version - 1, slug)
             )
         allow(
             "Amendment recorded for %s v%d — ungated revision write. No "
@@ -481,14 +506,14 @@ def main():
             pass
         deny(
             "Sign-off gate timed out — no approval arrived within %ds.%s "
-            "Do NOT bypass the gate. Run /research-plans:sign %s to reopen a "
+            "Do NOT bypass the gate. Run /planboard:sign %s to reopen a "
             "sign session for the saved draft; its durable ticket then admits "
             "the v%d.md write." % (timeout, saved, slug, version)
         )
     else:
         deny(
             "Sign-off gate could not open the sign session (%s). Run "
-            "/research-plans:sign %s, then attempt the write again."
+            "/planboard:sign %s, then attempt the write again."
             % (err.splitlines()[-1] if err else "exit %d" % code, slug)
         )
 
