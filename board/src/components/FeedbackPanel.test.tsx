@@ -30,6 +30,7 @@ function props(over: Partial<FeedbackPanelProps> = {}): FeedbackPanelProps {
     onReviewerChange: vi.fn(),
     onRemove: vi.fn(),
     onSaveHosted: vi.fn(),
+    onEdit: vi.fn(),
     onClose: vi.fn(),
     onSubmit: vi.fn(),
     onDownload: vi.fn(),
