@@ -2,6 +2,7 @@
 // on wide viewports — content reflows, nothing is covered — and the classic
 // overlay on narrow ones. Extracted verbatim from App's drawer block; App owns
 // all state, this renders it.
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type {
   Annotation,
@@ -27,6 +28,12 @@ export function AnnotationCard({
   onDelete,
   saveAction,
   onOpen,
+  editing,
+  draft,
+  onEditStart,
+  onEditChange,
+  onEditSave,
+  onEditCancel,
 }: {
   a: Annotation;
   sentBy?: string;
@@ -34,6 +41,12 @@ export function AnnotationCard({
   onDelete?: () => void;
   saveAction?: ReactNode;
   onOpen?: () => void;
+  editing?: boolean;
+  draft?: string;
+  onEditStart?: () => void;
+  onEditChange?: (t: string) => void;
+  onEditSave?: () => void;
+  onEditCancel?: () => void;
 }) {
   return (
     <div
@@ -129,20 +142,30 @@ export function AnnotationCard({
             outdated
           </span>
         )}
-        {onDelete && (
-          <button
-            className="ml-auto text-stone-400 dark:text-stone-500 hover:text-red-600"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            title="Delete"
-          >
-            ✕
-          </button>
+        {(onEditStart || onDelete) && (
+          <span className="ml-auto flex items-center gap-2">
+            {onEditStart && !editing && (
+              <button
+                className="text-stone-400 dark:text-stone-500 hover:text-stone-700"
+                onClick={(e) => { e.stopPropagation(); onEditStart(); }}
+                title="Edit"
+              >
+                Edit
+              </button>
+            )}
+            {onDelete && (
+              <button
+                className="text-stone-400 dark:text-stone-500 hover:text-red-600"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                title="Delete"
+              >
+                ✕
+              </button>
+            )}
+          </span>
         )}
       </div>
-      {(a.type === "plan-comment" || a.type === "doc-comment") && (
+      {(a.type === "plan-comment" || a.type === "doc-comment") && a.quote && (
         <div className="mb-1 line-clamp-2 rounded bg-amber-50 dark:bg-amber-950 px-1.5 py-1 text-[11px] italic text-stone-500">
           “{a.quote}”
         </div>
@@ -157,7 +180,38 @@ export function AnnotationCard({
           {a.excerpt}
         </pre>
       )}
-      <div className="text-stone-700 dark:text-stone-300">{a.comment}</div>
+      {editing ? (
+        <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <textarea
+            autoFocus
+            value={draft ?? ""}
+            onChange={(e) => onEditChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onEditSave?.();
+              if (e.key === "Escape") onEditCancel?.();
+            }}
+            className="h-16 w-full resize-none rounded border border-stone-200 dark:border-stone-800 p-1.5 text-xs outline-none focus:border-stone-400 dark:focus:border-stone-500"
+          />
+          <div className="mt-1 flex justify-end gap-2">
+            <button
+              className="rounded px-2 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800"
+              onClick={(e) => { e.stopPropagation(); onEditCancel?.(); }}
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded bg-stone-900 dark:bg-stone-200 px-2 py-0.5 text-[11px] font-medium text-white dark:text-stone-900 disabled:opacity-40"
+              disabled={!(draft ?? "").trim()}
+              onClick={(e) => { e.stopPropagation(); onEditSave?.(); }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-stone-700 dark:text-stone-300">{a.comment}</div>
+      )}
       {saveAction}
     </div>
   );
@@ -177,6 +231,7 @@ export interface FeedbackPanelProps {
   onReviewerChange: (v: string) => void;
   onRemove: (id: string) => void;
   onSaveHosted: (a: Annotation) => void;
+  onEdit: (id: string, text: string) => void;
   onCardClick?: (a: Annotation) => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -185,6 +240,17 @@ export interface FeedbackPanelProps {
 }
 
 export default function FeedbackPanel(p: FeedbackPanelProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  // If the edited annotation disappears (a hosted per-card Save completes, or a
+  // request clears drafts), clear editingId so submit/download/copy don't stay
+  // frozen on a comment that no longer exists.
+  useEffect(() => {
+    if (editingId !== null && !p.annotations.some((a) => a.id === editingId)) {
+      setEditingId(null);
+      setDraft("");
+    }
+  }, [p.annotations, editingId]);
   const shell =
     p.variant === "docked"
       ? "sticky flex w-[380px] shrink-0 flex-col border-l border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900"
@@ -215,13 +281,19 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
             key={a.id}
             a={a}
             onOpen={p.onCardClick ? () => p.onCardClick!(a) : undefined}
-            onDelete={() => p.onRemove(a.id)}
+            onDelete={editingId === null ? () => p.onRemove(a.id) : undefined}
+            editing={editingId === a.id}
+            draft={editingId === a.id ? draft : undefined}
+            onEditStart={editingId === null ? () => { setEditingId(a.id); setDraft(a.comment); } : undefined}
+            onEditChange={setDraft}
+            onEditSave={() => { if (draft.trim()) { p.onEdit(a.id, draft.trim()); setEditingId(null); } }}
+            onEditCancel={() => setEditingId(null)}
             saveAction={
               p.hosted ? (
                 <div className="mt-1.5 flex items-center gap-2 border-t border-stone-100 dark:border-stone-800 pt-1.5">
                   <button
                     className="rounded-md bg-stone-900 dark:bg-stone-200 px-2 py-1 text-[11px] font-semibold text-white dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-400 disabled:opacity-40"
-                    disabled={!p.reviewer.trim() || p.savingIds.has(a.id)}
+                    disabled={!p.reviewer.trim() || p.savingIds.has(a.id) || editingId !== null}
                     onClick={(e) => {
                       e.stopPropagation();
                       p.onSaveHosted(a);
@@ -272,7 +344,7 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
         {p.submitState === "failed" && (
           <div className="mb-2 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-2 text-xs text-red-800 dark:text-red-300">
             Could not reach the board server (it may have exited).{" "}
-            <button className="font-medium underline" onClick={p.onCopyFallback}>
+            <button className="font-medium underline disabled:opacity-40" onClick={p.onCopyFallback} disabled={editingId !== null}>
               Copy feedback as markdown
             </button>{" "}
             and paste it into your session instead.
@@ -284,7 +356,8 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
               className="w-full rounded-md bg-stone-900 dark:bg-stone-200 py-2 text-sm font-semibold text-white dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-400 disabled:opacity-40"
               disabled={
                 p.annotations.length === 0 ||
-                p.submitState === "sending"
+                p.submitState === "sending" ||
+                editingId !== null
               }
               onClick={p.onSubmit}
             >
@@ -325,14 +398,15 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
             )}
             <button
               className="w-full rounded-md bg-stone-900 dark:bg-stone-200 py-2 text-sm font-semibold text-white dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-400 disabled:opacity-40"
-              disabled={p.annotations.length === 0}
+              disabled={p.annotations.length === 0 || editingId !== null}
               onClick={p.onDownload}
             >
               Download feedback file
             </button>
             <button
-              className="block w-full text-center text-[11px] text-stone-500 underline hover:text-stone-700"
+              className="block w-full text-center text-[11px] text-stone-500 underline hover:text-stone-700 disabled:opacity-40"
               onClick={p.onCopyFallback}
+              disabled={editingId !== null}
             >
               or copy feedback to clipboard
             </button>
