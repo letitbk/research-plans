@@ -32,6 +32,17 @@ If `board/src/` changes, run `cd board && npm run build`. Commit the regenerated
 `skills/managing-planboard/assets/board-template.html`. Run the build again and
 require a clean diff for that template.
 
+## Regression coverage
+
+When fixing an observed product bug or a failure in CI or a development
+environment:
+
+- Add or update an automated test that fails before the fix and passes afterward.
+- Run that test through one of the existing required test jobs.
+- If an automated test is not practical, explain why in the pull request.
+- Do not present the fix as complete without a regression test or a specific
+  explanation for the exception.
+
 ## Release policy
 
 Every PR that changes shipped code or behavior is a release. Use a patch bump
@@ -59,3 +70,6 @@ version bump.
   and stale-tab paths. Do not assume one mode represents all modes.
 - Treat reported model provenance as self-attested. Do not present it as
   confirmed runtime identity.
+- Check that the pull request's regression coverage choice matches the change.
+  Flag a failure fix that lacks a relevant automated test or a specific reason
+  why a test is not practical.
