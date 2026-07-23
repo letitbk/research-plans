@@ -93,6 +93,22 @@ This writes `plans/board.html`, one self-contained file that opens in any browse
 
 To get feedback from a collaborator who does not use Claude Code, `/planboard:board --share` emails just as easily — they annotate in their browser and send back a feedback file that `/planboard:board --collect <file>` routes into your session with attribution. For a collaborator to read and comment from their own browser without any file exchange, `/planboard:board --publish-web` publishes to a private, password-protected link — a one-time setup of about 20 minutes, walked through in [docs/hosting-the-board.md](docs/hosting-the-board.md).
 
+## How versioning works
+
+A plan moves through two stages, and knowing them explains every version number you see on the board.
+
+First you draft and revise. When you run `/planboard:plan`, the plan starts as a draft at `plans/execution/<component>/.draft-v1.md`. A draft is a working copy that you can change as many times as you want. Each time you ask for changes, the previous state is saved as a numbered snapshot, `v1-draft-1.md`, then `v1-draft-2.md`, and so on. The board shows these as `v1·d1`, `v1·d2`. They are your revision history, and the plan stays version 1 the whole time.
+
+Then you sign off, and that creates the version. Signing off does two things. The plan is frozen so it can never be edited again, and it is written as `v1.md` with a `Signed off:` line. This happens at the execution gate in step 4, or on its own with `/planboard:sign`. The signed `v1` is the plan of record.
+
+After you sign off `v1`, the next round of changes starts a new draft at `.draft-v2.md`, which you revise the same way (`v2·d1`, `v2·d2`) until you sign it as `v2`. This is why a change made after sign off shows up as the next version. The sign off is the line between one version and the next.
+
+One other path creates a version. If the work ends up different from what the signed plan said, `/planboard:sync` records the difference as an amendment and writes the next version with an `Amendment recorded` line instead of a sign off. This way the record shows what actually ran.
+
+Reviewing a plan does not change the version. `/planboard:review` and the board's **Review with** button read the plan and score it against the rubric, then write that score to a separate scorecard. You can review a draft or a signed version at any point, as many times as you want, and the version does not move. A review can lead you to revise the plan, and that revision is a normal change that stays in the current draft until you sign off. The review on its own never advances the version.
+
+Keep one label separate. On the board, `r1`, `r2` are results bundles, the captured outputs of a run (step 5), not plan revisions.
+
 ## FAQ
 
 **My project is not a git repository.** Everything works, but the plugin loses git-based evidence (commit timing, staleness checks) and will say so. A git repository is strongly recommended since the version history is part of the point.

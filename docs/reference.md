@@ -100,6 +100,8 @@ Projects without a profile behave exactly as before. Model profiles need a curre
 
 ## The sign-off gate
 
+For how versions, revisions, and amendments relate in plain terms, see [How versioning works](../QUICKSTART.md#how-versioning-works) in the Quickstart. This section covers how sign-off is enforced.
+
 Signing a plan is enforced, not offered. `/planboard:execute` opens a slim sign session for pending drafts before work begins; `/planboard:sign` opens the same session without starting execution. You approve each exact draft or request changes with annotations and a note. An approval writes a content-hash-bound ticket, and the finalization transaction copies the approved draft into its canonical `vN.md` with the `Signed off:` trailer. Tickets and `.sign-feedback-vN.md` files survive interruption, so rerunning `/sign` recovers the session from disk.
 
 The plugin also ships a PreToolUse hook. It denies edits and overwrites of every existing canonical `vN.md`. A direct write to a new canonical version opens the same sign UI through the hook transport. `/sync` may write a next consecutive version with an `Amendment recorded, YYYY-MM-DD` trailer without claiming a human sign decision. Re-execution materializes and signs a fresh commitment to that amendment.
