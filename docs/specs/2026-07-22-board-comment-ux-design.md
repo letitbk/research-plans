@@ -17,9 +17,14 @@ bubble → a composer). Two gaps:
 2. **Saved comments can't be edited.** Only create + delete exist, and delete
    only for local (unsent) comments.
 
-`#3` (inline highlights persisting) and click-to-jump were fixed separately
-(memoizing `Markdown`). `#5` (a sign-off button on the board) was dropped — the
-terminal-only sign gate is intentional.
+`#3` was a **highlight-persistence + click-to-jump** fix, landed separately
+(memoizing `Markdown` so the imperatively-injected `<mark>` highlights survive
+board re-renders). Two user-visible wins from that one fix: highlights now
+**persist** after a comment is saved, and **clicking a comment scrolls to and
+flashes its highlighted passage** (and clicking a highlight opens its comment) —
+the click-sync had silently broken because its target `<mark>` was being torn
+out. `#5` (a sign-off button on the board) was dropped — the terminal-only sign
+gate is intentional.
 
 ## Feature 1 — "Global comment" on the current plan
 
