@@ -883,14 +883,18 @@ def project_id(root):
 
 
 # ---------------------------------------------------------------------------
-# Mechanical launcher (rp-board): a project-local script that opens the board
+# Mechanical launcher (pb-board): a project-local script that opens the board
 # with no LLM in the loop, so a researcher can reach it while the Claude
 # session is rate-limited. board.py writes it itself, so the interpreter and
 # board.py path are baked without any path-guessing.
 # ---------------------------------------------------------------------------
 
-LAUNCHER_NAME = "rp-board"
-LAUNCHER_MARKER = "rp-board-managed-launcher-v1"
+LAUNCHER_NAME = "pb-board"
+LAUNCHER_MARKER = "pb-board-managed-launcher-v1"
+# Pre-rename managed launcher, removed on the first pb-board write so a legacy
+# project doesn't end up with both ./rp-board and ./pb-board.
+LEGACY_LAUNCHER_NAME = "rp-board"
+LEGACY_LAUNCHER_MARKER = "rp-board-managed-launcher-v1"
 
 
 def launcher_script(board_path=None, interpreter=None):
@@ -903,7 +907,7 @@ def launcher_script(board_path=None, interpreter=None):
     return (
         "#!/bin/sh\n"
         "# %s\n"
-        "# research-plans: open the board with no Claude/LLM. Auto-generated; do not edit.\n"
+        "# planboard: open the board with no Claude/LLM. Auto-generated; do not edit.\n"
         'cd "$(dirname "$0")" || exit 1\n'
         'exec %s %s --project-root . --reuse "$@"\n'
         % (LAUNCHER_MARKER, shlex.quote(str(interpreter)), shlex.quote(str(board_path)))
@@ -930,7 +934,7 @@ def _git_exclude_path(root):
 
 
 def ensure_git_exclude(root):
-    """Add `/rp-board` to the repo's local exclude (no tracked-file churn).
+    """Add `/pb-board` to the repo's local exclude (no tracked-file churn).
     Idempotent; a no-op outside a git working tree."""
     excl = _git_exclude_path(root)
     if excl is None:
@@ -949,8 +953,22 @@ def ensure_git_exclude(root):
         pass  # non-fatal: the launcher still works, it is just not excluded
 
 
+def _remove_legacy_launcher(root):
+    """Remove a pre-rename managed ./rp-board so it doesn't sit beside pb-board.
+    Only removes a regular file carrying the legacy marker; never a symlink,
+    directory, or a user-authored file."""
+    lp = Path(root) / LEGACY_LAUNCHER_NAME
+    if lp.is_symlink() or not lp.is_file():
+        return
+    try:
+        if LEGACY_LAUNCHER_MARKER in lp.read_text(encoding="utf-8"):
+            lp.unlink()
+    except OSError:
+        pass
+
+
 def ensure_launcher(root, explicit=False):
-    """Write/refresh <root>/rp-board and exclude it from git. Returns a status
+    """Write/refresh <root>/pb-board and exclude it from git. Returns a status
     string: created / refreshed / unchanged / skipped:<reason>.
 
     Never destructive: only a regular file carrying LAUNCHER_MARKER is replaced.
@@ -983,6 +1001,7 @@ def ensure_launcher(root, explicit=False):
         has_x = os.access(lp, os.X_OK)
         if current == desired and has_x:
             ensure_git_exclude(root)
+            _remove_legacy_launcher(root)
             return "unchanged"
         status = "refreshed"
     else:
@@ -1004,6 +1023,7 @@ def ensure_launcher(root, explicit=False):
               % (lp, e), file=sys.stderr)
         return "skipped:write-error"
     ensure_git_exclude(root)
+    _remove_legacy_launcher(root)
     if status == "created":
         print("board: wrote ./%s — open the board without Claude by running ./%s"
               % (LAUNCHER_NAME, LAUNCHER_NAME), file=sys.stderr)
@@ -2810,10 +2830,10 @@ def parse_args(argv=None):
     ap.add_argument("--web-clear", action="store_true")
     ap.add_argument("--set-password", action="store_true")
     ap.add_argument("--install-launcher", action="store_true",
-                    help="write the mechanical ./rp-board launcher and exit")
+                    help="write the mechanical ./pb-board launcher and exit")
     ap.add_argument("--project-root", default=None, metavar="DIR",
                     help="use DIR as the project root instead of inferring it "
-                         "(the rp-board launcher passes --project-root .)")
+                         "(the pb-board launcher passes --project-root .)")
     ap.add_argument("--reuse", action="store_true",
                     help="on a plain-live launch, open an already-running board "
                          "for this project instead of failing or double-serving")
@@ -2849,7 +2869,7 @@ def main():
     check_action_exclusivity(args)
 
     if args.project_root:
-        # The rp-board launcher passes --project-root . after cd'ing to its own
+        # The pb-board launcher passes --project-root . after cd'ing to its own
         # dir, pinning the board to THIS project even when a parent git repo also
         # has plans/ (find_root() would otherwise prefer the git toplevel).
         root = Path(args.project_root).resolve()

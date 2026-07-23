@@ -233,5 +233,25 @@ class MigrateLegacyAgents(unittest.TestCase):
             self.assertTrue((adir / "rp-plan-reviewer.md").exists())  # left alone
 
 
+class LauncherMigration(unittest.TestCase):
+    def test_removes_legacy_managed_launcher(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / board.LEGACY_LAUNCHER_NAME
+            legacy.write_text("#!/bin/sh\n# %s\nexec :\n" % board.LEGACY_LAUNCHER_MARKER)
+            board.ensure_launcher(root)
+            self.assertTrue((root / board.LAUNCHER_NAME).exists())  # pb-board written
+            self.assertFalse(legacy.exists())  # rp-board removed — no duplicate
+
+    def test_keeps_foreign_legacy_launcher(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            legacy = root / board.LEGACY_LAUNCHER_NAME
+            legacy.write_text("my own script\n")  # no ownership marker
+            board.ensure_launcher(root)
+            self.assertTrue(legacy.exists())  # user file untouched
+            self.assertEqual(legacy.read_text(), "my own script\n")
+
+
 if __name__ == "__main__":
     unittest.main()

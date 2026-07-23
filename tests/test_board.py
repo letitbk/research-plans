@@ -3208,7 +3208,7 @@ class TestDetailLevel(unittest.TestCase):
 
 
 class TestLauncherScript(unittest.TestCase):
-    """The generated rp-board launcher text and its shell-injection safety."""
+    """The generated pb-board launcher text and its shell-injection safety."""
 
     def test_has_shebang_marker_and_required_fields(self):
         s = board.launcher_script("/plugins/x/board.py", interpreter="/usr/bin/python3")
@@ -3244,7 +3244,7 @@ class TestEnsureLauncher(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
             self.assertEqual(board.ensure_launcher(root), "created")
-            lp = root / "rp-board"
+            lp = root / "pb-board"
             self.assertTrue(lp.is_file())
             self.assertIn(board.LAUNCHER_MARKER, self._read(lp))
             self.assertTrue(os.access(lp, os.X_OK))
@@ -3258,7 +3258,7 @@ class TestEnsureLauncher(unittest.TestCase):
     def test_rewrites_stale_managed_content(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
-            lp = root / "rp-board"
+            lp = root / "pb-board"
             lp.write_text(
                 "#!/bin/sh\n# %s\nexec /old/py /old/board.py\n" % board.LAUNCHER_MARKER,
                 encoding="utf-8")
@@ -3270,7 +3270,7 @@ class TestEnsureLauncher(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
             board.ensure_launcher(root)
-            lp = root / "rp-board"
+            lp = root / "pb-board"
             os.chmod(lp, 0o644)
             self.assertEqual(board.ensure_launcher(root), "refreshed")
             self.assertTrue(os.access(lp, os.X_OK))
@@ -3278,7 +3278,7 @@ class TestEnsureLauncher(unittest.TestCase):
     def test_refuses_foreign_regular_file_nonfatal(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
-            lp = root / "rp-board"
+            lp = root / "pb-board"
             lp.write_text("#!/bin/sh\necho my own script\n", encoding="utf-8")
             status = board.ensure_launcher(root)
             self.assertTrue(status.startswith("skipped"), status)
@@ -3287,7 +3287,7 @@ class TestEnsureLauncher(unittest.TestCase):
     def test_refuses_foreign_regular_file_fatal_when_explicit(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
-            (root / "rp-board").write_text("mine\n", encoding="utf-8")
+            (root / "pb-board").write_text("mine\n", encoding="utf-8")
             with self.assertRaises(SystemExit):
                 board.ensure_launcher(root, explicit=True)
 
@@ -3296,7 +3296,7 @@ class TestEnsureLauncher(unittest.TestCase):
             root = Path(d); make_project(root)
             target = root / "secret.txt"
             target.write_text("do not touch\n", encoding="utf-8")
-            (root / "rp-board").symlink_to(target)
+            (root / "pb-board").symlink_to(target)
             status = board.ensure_launcher(root)
             self.assertTrue(status.startswith("skipped"), status)
             self.assertEqual(target.read_text(encoding="utf-8"), "do not touch\n")
@@ -3304,7 +3304,7 @@ class TestEnsureLauncher(unittest.TestCase):
     def test_refuses_directory(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); make_project(root)
-            (root / "rp-board").mkdir()
+            (root / "pb-board").mkdir()
             self.assertTrue(board.ensure_launcher(root).startswith("skipped"))
 
     def test_no_git_still_creates_launcher(self):
@@ -3320,7 +3320,7 @@ class TestGitExclude(unittest.TestCase):
             (root / ".git" / "info").mkdir(parents=True)
             board.ensure_launcher(root)
             excl = (root / ".git" / "info" / "exclude").read_text(encoding="utf-8")
-            self.assertIn("/rp-board", excl)
+            self.assertIn("/pb-board", excl)
 
     def test_not_duplicated_across_calls(self):
         with tempfile.TemporaryDirectory() as d:
@@ -3329,7 +3329,7 @@ class TestGitExclude(unittest.TestCase):
             board.ensure_launcher(root)
             board.ensure_launcher(root)
             excl = (root / ".git" / "info" / "exclude").read_text(encoding="utf-8")
-            self.assertEqual(excl.count("/rp-board"), 1)
+            self.assertEqual(excl.count("/pb-board"), 1)
 
     def test_worktree_gitfile_redirect(self):
         with tempfile.TemporaryDirectory() as d:
@@ -3339,7 +3339,7 @@ class TestGitExclude(unittest.TestCase):
             (root / ".git").write_text("gitdir: %s\n" % realgit, encoding="utf-8")
             board.ensure_launcher(root)
             excl = (realgit / "info" / "exclude").read_text(encoding="utf-8")
-            self.assertIn("/rp-board", excl)
+            self.assertIn("/pb-board", excl)
 
 
 class TestHealthyRunningBoard(unittest.TestCase):

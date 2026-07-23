@@ -52,7 +52,7 @@ The plugin adds a handful of commands to Claude Code. A normal project moves thr
 
 <sub>The validation checks the work against the plan you signed and flags where they diverge — advisory, never a gate. Reopen requests a fix without changing the immutable bundle.</sub>
 
-The board runs on `python3` alone — nothing to install — as a small local server, or as a single self-contained HTML file you can email. It does not need Claude to open: every board open leaves a `./rp-board` script in the project, so a terminal command gets you the dashboard with no model in the loop, which matters on the day your session is rate-limited. Sharing to a private, password-protected link for browser-only collaborators is one more step (it uses Vercel and needs Node.js once, to set up). Full details are in the [reference](docs/reference.md#the-board).
+The board runs on `python3` alone — nothing to install — as a small local server, or as a single self-contained HTML file you can email. It does not need Claude to open: every board open leaves a `./pb-board` script in the project, so a terminal command gets you the dashboard with no model in the loop, which matters on the day your session is rate-limited. Sharing to a private, password-protected link for browser-only collaborators is one more step (it uses Vercel and needs Node.js once, to set up). Full details are in the [reference](docs/reference.md#the-board).
 
 ## Who it's for
 

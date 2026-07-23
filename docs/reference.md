@@ -27,7 +27,7 @@ Complete technical reference. For what the plugin is and why you'd use it, start
 | `/research-plans:models` | View or edit the per-stage model profile; regenerates the project's `rp-*` review agents. |
 | `/research-plans:results` | Capture a versioned results bundle for a component — brief report, figure/table snapshots, key numbers, script snapshots, and an automatic plan-vs-execution validation. `--adopt` brings pre-existing artifacts under verification. |
 | `/research-plans:report` | Generate a shareable report for a bundle (markdown always; PDF/DOCX via pandoc) into `plans/reports/` — also available as the board's Generate report button; offered automatically at capture end. |
-| `/research-plans:board` | Open the board: a browser dashboard over everything, with drift flags, live annotation, a shareable snapshot, or `--publish-web` to a private, password-protected link for collaborators. `./rp-board` opens the same board from a terminal with no model in the loop. |
+| `/research-plans:board` | Open the board: a browser dashboard over everything, with drift flags, live annotation, a shareable snapshot, or `--publish-web` to a private, password-protected link for collaborators. `./pb-board` opens the same board from a terminal with no model in the loop. |
 
 Everything is opt-in. The plugin does nothing in projects you have not initialized.
 
@@ -57,7 +57,7 @@ Or let an agent do the reviewing: the **Review with** button on any plan version
 
 ### Opening the board without Claude
 
-Every plain live open also writes or refreshes `./rp-board` in the project root — a small launcher that opens the board with no model in the loop. Run `./rp-board` in a terminal, or `!./rp-board` from inside a session; it reconnects to a board already running on the project's port, or serves a fresh one. Use it when your Claude session is rate-limited, or when you only want to read.
+Every plain live open also writes or refreshes `./pb-board` in the project root — a small launcher that opens the board with no model in the loop. Run `./pb-board` in a terminal, or `!./pb-board` from inside a session; it reconnects to a board already running on the project's port, or serves a fresh one. Use it when your Claude session is rate-limited, or when you only want to read.
 
 The launcher is created at `/research-plans:init` and can be written on demand with `python3 <plugin>/skills/managing-planboard/scripts/board.py --install-launcher`. It bakes in this machine's python interpreter and plugin path, so it is machine-specific and kept out of git through `.git/info/exclude` rather than `.gitignore` — no tracked-file churn, and it never enters a commit. board.py only ever replaces a launcher it wrote itself; a symlink, a directory, or a file of your own at that path is refused, not overwritten.
 
@@ -149,7 +149,7 @@ plans/
             └── r2/             a redo; r1 is never edited
 ```
 
-Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions, and `./rp-board` in the project root — the machine-specific board launcher, excluded from git through `.git/info/exclude`. Unsigned working drafts (`.draft-vN.md`), sign feedback (`.sign-feedback-vN.md`), results staging directories (`.staging-*`), and board bookkeeping files are gitignored automatically.
+Plus a short marked section in your project's `CLAUDE.md` so every future session follows the conventions, and `./pb-board` in the project root — the machine-specific board launcher, excluded from git through `.git/info/exclude`. Unsigned working drafts (`.draft-vN.md`), sign feedback (`.sign-feedback-vN.md`), results staging directories (`.staging-*`), and board bookkeeping files are gitignored automatically.
 
 ## Install, updating, and pinning
 
