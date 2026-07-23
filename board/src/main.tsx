@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import type { BoardData } from "./lib/types";
+import { migrateLegacyStorage } from "./lib/storageMigration";
 import "./index.css";
 
 function readSlot(): BoardData | null {
@@ -42,6 +43,14 @@ function NoData() {
 let data = readSlot();
 if (!data && import.meta.env.DEV) {
   data = (await import("./dev-data")).devData;
+}
+
+// Migrate pre-rename localStorage keys (rp-* -> pb-*) once, before React reads
+// any of them (theme already read pre-paint in index.html with an rp- fallback).
+try {
+  migrateLegacyStorage(localStorage);
+} catch {
+  // no localStorage (file:// exports, SSR) — skip
 }
 
 createRoot(document.getElementById("root")!).render(

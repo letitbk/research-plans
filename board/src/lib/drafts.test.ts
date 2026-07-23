@@ -61,6 +61,34 @@ describe("live draft storage", () => {
     expect(drafts.map((a) => a.id).sort()).toEqual(["a", "b"]);
   });
 
+  it("migrates the pre-rename rp-board live key into the pb-board live key", () => {
+    const s = fakeStorage();
+    s.setItem(`rp-board:${PID}:live`, JSON.stringify([ann("a")]));
+    s.setItem(`rp-board:${PID}:live:seeded`, JSON.stringify(["s1"]));
+    const drafts = loadDrafts(s, PID, "proj", "hash1");
+    expect(drafts.map((a) => a.id)).toEqual(["a"]);
+    expect(s.getItem(`rp-board:${PID}:live`)).toBeNull(); // old stable removed
+    expect(
+      (JSON.parse(s.getItem(liveDraftKey(PID)) as string) as Annotation[]).map((a) => a.id),
+    ).toEqual(["a"]);
+    const seeded = JSON.parse(
+      s.getItem(draftSuffixKey(liveDraftKey(PID), "seeded")) as string,
+    ) as string[];
+    expect(seeded).toEqual(["s1"]);
+  });
+
+  it("both-written: current pb-board key wins on id collision, older ids merge in", () => {
+    const s = fakeStorage();
+    s.setItem(liveDraftKey(PID), JSON.stringify([ann("shared"), ann("new")]));
+    s.setItem(`rp-board:${PID}:live`, JSON.stringify([ann("shared"), ann("old-stable")]));
+    s.setItem("rp-board:proj:hash1", JSON.stringify([ann("oldest")]));
+    const drafts = loadDrafts(s, PID, "proj", "hash1");
+    expect(drafts.map((a) => a.id).sort()).toEqual(["new", "old-stable", "oldest", "shared"]);
+    expect(drafts.filter((a) => a.id === "shared").length).toBe(1); // no duplicate
+    expect(s.getItem(`rp-board:${PID}:live`)).toBeNull();
+    expect(s.getItem("rp-board:proj:hash1")).toBeNull();
+  });
+
   it("clearSubmitted removes only the given ids", () => {
     const s = fakeStorage();
     s.setItem(liveDraftKey(PID), JSON.stringify([ann("a"), ann("b"), ann("c")]));

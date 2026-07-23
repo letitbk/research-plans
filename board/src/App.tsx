@@ -187,11 +187,11 @@ export default function App({ data }: { data: BoardData }) {
   const canPost = data.mode === "live";
   const remote = data.mode === "remote";
   const payloadHash = useMemo(() => payloadContentHash(allFiles(data)), [data]);
-  const storageKey = `rp-board:${data.project.name}:${payloadHash}`;
+  const storageKey = `pb-board:${data.project.name}:${payloadHash}`;
   // Hosted persistence is keyed by project + board URL (stable across a
   // republish), not payloadHash — so redeploying the board never orphans a
   // visitor's unsent drafts or resets their name.
-  const webKey = hosted ? `rp-hosted:${data.project.name}:${location.origin}` : null;
+  const webKey = hosted ? `pb-hosted:${data.project.name}:${location.origin}` : null;
   // Live persistence (control surface): a STABLE per-project key so relaunches
   // with changed payloads never orphan unsent drafts. Remote keeps the
   // payload-hash scheme (one-shot files exchanged across machines).
@@ -1145,7 +1145,7 @@ export default function App({ data }: { data: BoardData }) {
             activeId={activeFile?.id ?? null}
             activeLabel={activeFile?.label ?? null}
             activeOutlineId={activeOutlineId}
-            storageKey={`rp-sidebar:${data.projectId ?? data.project.name}`}
+            storageKey={`pb-sidebar:${data.projectId ?? data.project.name}`}
             defaultCollapsed={isCoarse}
             topOffsetPx={headerOffset}
           />
