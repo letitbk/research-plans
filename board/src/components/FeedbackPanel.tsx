@@ -2,7 +2,7 @@
 // on wide viewports — content reflows, nothing is covered — and the classic
 // overlay on narrow ones. Extracted verbatim from App's drawer block; App owns
 // all state, this renders it.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type {
   Annotation,
@@ -181,7 +181,7 @@ export function AnnotationCard({
         </pre>
       )}
       {editing ? (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
           <textarea
             autoFocus
             value={draft ?? ""}
@@ -242,6 +242,15 @@ export interface FeedbackPanelProps {
 export default function FeedbackPanel(p: FeedbackPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // If the edited annotation disappears (a hosted per-card Save completes, or a
+  // request clears drafts), clear editingId so submit/download/copy don't stay
+  // frozen on a comment that no longer exists.
+  useEffect(() => {
+    if (editingId !== null && !p.annotations.some((a) => a.id === editingId)) {
+      setEditingId(null);
+      setDraft("");
+    }
+  }, [p.annotations, editingId]);
   const shell =
     p.variant === "docked"
       ? "sticky flex w-[380px] shrink-0 flex-col border-l border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900"
@@ -335,7 +344,7 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
         {p.submitState === "failed" && (
           <div className="mb-2 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-2 text-xs text-red-800 dark:text-red-300">
             Could not reach the board server (it may have exited).{" "}
-            <button className="font-medium underline" onClick={p.onCopyFallback}>
+            <button className="font-medium underline disabled:opacity-40" onClick={p.onCopyFallback} disabled={editingId !== null}>
               Copy feedback as markdown
             </button>{" "}
             and paste it into your session instead.
@@ -395,8 +404,9 @@ export default function FeedbackPanel(p: FeedbackPanelProps) {
               Download feedback file
             </button>
             <button
-              className="block w-full text-center text-[11px] text-stone-500 underline hover:text-stone-700"
+              className="block w-full text-center text-[11px] text-stone-500 underline hover:text-stone-700 disabled:opacity-40"
               onClick={p.onCopyFallback}
+              disabled={editingId !== null}
             >
               or copy feedback to clipboard
             </button>

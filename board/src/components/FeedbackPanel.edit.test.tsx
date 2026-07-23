@@ -52,6 +52,20 @@ describe("FeedbackPanel edit unsent comments", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
+  it("clears a stranded edit when the edited comment disappears (unfreezes Send)", () => {
+    const { rerender } = render(
+      <FeedbackPanel
+        {...props({ annotations: [comment("a1", "first"), comment("a2", "second")] })}
+      />,
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]); // edit a1
+    expect((screen.getByRole("button", { name: /Send to Claude/ }) as HTMLButtonElement).disabled).toBe(true);
+    // a1 disappears (e.g. its hosted Save completed); only a2 remains
+    rerender(<FeedbackPanel {...props({ annotations: [comment("a2", "second")] })} />);
+    // editingId is cleared, so Send is no longer frozen
+    expect((screen.getByRole("button", { name: /Send to Claude/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows no Edit button on sent (serverLive) comments", () => {
     render(
       <FeedbackPanel
