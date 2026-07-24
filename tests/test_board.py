@@ -3429,3 +3429,61 @@ class TestBuildLivePayload(unittest.TestCase):
             g1 = board.payload_generation(board.build_live_payload(root, None, None, None, None))
             g2 = board.payload_generation(board.build_live_payload(root, None, None, None, None))
             self.assertEqual(g1, g2)
+
+
+class TestPlansFingerprint(unittest.TestCase):
+    def _fp(self, root):
+        return board.plans_fingerprint(root, [])
+
+    def test_draft_write_changes_fingerprint(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            f1 = self._fp(root)
+            (root / "plans" / "execution" / "02-other" / ".draft-v2.md"
+             ).write_text("# v2\n", encoding="utf-8")
+            self.assertNotEqual(f1, self._fp(root))
+
+    def test_bookkeeping_writes_do_not_change_fingerprint(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            plans = make_project(root)
+            f1 = self._fp(root)
+            (plans / ".board.lock").write_text("{}", encoding="utf-8")
+            (plans / ".board-feedback.md").write_text("x", encoding="utf-8")
+            (plans / ".board-feedback.md.tmp").write_text("x", encoding="utf-8")
+            (plans / ".import-approved-01-data-prep-v2").write_text("h", encoding="utf-8")
+            (plans / "execution" / "01-data-prep" / ".sign-feedback-v2.md"
+             ).write_text("no", encoding="utf-8")
+            self.assertEqual(f1, self._fp(root))
+
+    def test_new_empty_directory_changes_fingerprint(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            f1 = self._fp(root)
+            (root / "plans" / "execution" / "02-other" / "results" / ".staging-a"
+             ).mkdir(parents=True)
+            self.assertNotEqual(f1, self._fp(root))
+
+    def test_git_paths_resolve_in_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as d:
+            main = Path(d) / "main"
+            main.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=main, check=True)
+            subprocess.run(["git", "-C", str(main), "commit", "-q",
+                            "--allow-empty", "-m", "x"], check=True,
+                           env={**os.environ, "GIT_AUTHOR_NAME": "t",
+                                "GIT_AUTHOR_EMAIL": "t@t",
+                                "GIT_COMMITTER_NAME": "t",
+                                "GIT_COMMITTER_EMAIL": "t@t"})
+            wt = Path(d) / "wt"
+            subprocess.run(["git", "-C", str(main), "worktree", "add", "-q",
+                            str(wt)], check=True)
+            paths = board.resolve_git_paths(wt)
+            self.assertTrue(paths, "expected git paths in a linked worktree")
+            self.assertTrue(paths[0].name == "HEAD" and paths[0].is_file())
+
+    def test_git_paths_empty_outside_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(board.resolve_git_paths(Path(d)), [])

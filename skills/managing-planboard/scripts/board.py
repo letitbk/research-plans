@@ -897,6 +897,64 @@ def project_id(root):
     return hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:16]
 
 
+_FP_EXACT = {".board.lock", ".board-feedback.md", ".board-feedback.md.tmp",
+             ".board-web"}
+
+
+def fingerprint_excluded(name):
+    """Bookkeeping the board machinery itself writes during a session. Draft
+    files (.draft-vN.md) are dotfiles and MUST be fingerprinted, so this is a
+    list of specific server-written names, never 'all dotfiles'."""
+    return (name in _FP_EXACT
+            or name.startswith(".import-approved-")
+            or (name.startswith(".sign-feedback-v") and name.endswith(".md")))
+
+
+def resolve_git_paths(root):
+    """HEAD and index inside the repository's REAL git directory ([] when git
+    is unavailable). Resolved via rev-parse because in a linked worktree .git
+    is a file, not a directory."""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--absolute-git-dir"],
+                           capture_output=True, text=True, cwd=str(root),
+                           timeout=10)
+    except Exception:
+        return []
+    if r.returncode != 0:
+        return []
+    gd = Path(r.stdout.strip())
+    return [gd / "HEAD", gd / "index"]
+
+
+def plans_fingerprint(root, git_paths):
+    """Cheap disk-change detector for the live board: stat entries for every
+    file and directory under plans/ (minus server bookkeeping) plus git
+    HEAD/index mtimes. Equality means 'no rebuild needed'; any difference
+    triggers a full payload rebuild whose generation decides staleness."""
+    entries = []
+    plans = str(root / "plans")
+    for dirpath, dirnames, filenames in os.walk(plans):
+        dirnames.sort()
+        rel = os.path.relpath(dirpath, plans)
+        for dname in dirnames:
+            entries.append(("d", os.path.join(rel, dname)))
+        for fn in sorted(filenames):
+            if fingerprint_excluded(fn):
+                continue
+            try:
+                st = os.stat(os.path.join(dirpath, fn))
+            except OSError:
+                continue
+            entries.append(("f", os.path.join(rel, fn),
+                            st.st_mtime_ns, st.st_size))
+    for gp in git_paths:
+        try:
+            entries.append(("g", str(gp), gp.stat().st_mtime_ns))
+        except OSError:
+            entries.append(("g", str(gp), None))
+    return tuple(entries)
+
+
 # ---------------------------------------------------------------------------
 # Mechanical launcher (pb-board): a project-local script that opens the board
 # with no LLM in the loop, so a researcher can reach it while the Claude
