@@ -2,6 +2,7 @@
     python3 -m unittest tests.test_board -v
 """
 import argparse
+import hashlib
 import http.client
 import json
 import os
@@ -3590,3 +3591,89 @@ class TestLiveRefreshHTTP(unittest.TestCase):
                 self.fail("expected HTTPError")
             except urllib.error.HTTPError as e:
                 self.assertEqual(e.code, 404)
+
+    def test_sign_modes_never_regenerate(self):
+        for transport in ("hook", "ticket"):
+            with tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                make_project(root)
+                payload = live_payload(root)
+                item = {"component": "01-data-prep", "proposedVersion": 2,
+                        "path": "plans/execution/01-data-prep/.draft-v2.md",
+                        "content": "# Data prep v2 draft\n\nDo it better.\n",
+                        "contentHash": hashlib.sha256(
+                            "# Data prep v2 draft\n\nDo it better.\n"
+                            .encode("utf-8")).hexdigest(),
+                        "ticketed": False}
+                payload["sign"] = {"batchId": "t1", "transport": transport,
+                                   "items": [item]}
+                url, info, t = serve_in_thread(root, payload=payload)
+                g1 = self._health(url)["generation"]
+                (root / "plans" / "execution" / "02-other" / ".draft-v2.md"
+                 ).write_text("# v2\n", encoding="utf-8")
+                self.assertEqual(self._health(url)["generation"], g1,
+                                 "transport %s regenerated" % transport)
+
+    def test_build_failure_keeps_serving_then_recovers(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            url, info, t = serve_in_thread(root)
+            g1 = self._health(url)["generation"]
+            mp = root / "plans" / "master-plan.md"
+            saved = mp.read_text(encoding="utf-8")
+            mp.unlink()  # collect_payload die()s without a master plan
+            self.assertEqual(self._health(url)["generation"], g1)
+            self.assertIn("bootId", extract_payload(self._root_html(url)))
+            mp.write_text(saved + "\nRECOVERED\n", encoding="utf-8")
+            self.assertNotEqual(self._health(url)["generation"], g1,
+                                "failed fingerprint must not be cached")
+
+    def test_boot_fields_survive_regeneration(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            seeds = [{"planPath": "plans/execution/01-data-prep/v1.md",
+                      "quote": "thing", "comment": "hm", "author": "rev"}]
+            payload = board.build_live_payload(
+                root, "01-data-prep", 1, "reports", seeds)
+            url, info, t = serve_in_thread(root, payload=payload)
+            (root / "plans" / "execution" / "02-other" / ".draft-v2.md"
+             ).write_text("# v2\n", encoding="utf-8")
+            fresh = extract_payload(self._root_html(url))
+            self.assertEqual(fresh["focus"], "01-data-prep")
+            self.assertEqual(fresh["focusResults"], 1)
+            self.assertEqual(fresh["focusView"], "reports")
+            self.assertEqual(fresh["seededAnnotations"], seeds)
+            self.assertEqual(fresh["projectId"], board.project_id(root))
+
+    def test_concurrent_gets_and_health_stay_coherent(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            make_project(root)
+            url, info, t = serve_in_thread(root)
+            g1 = self._health(url)["generation"]
+            (root / "plans" / "execution" / "02-other" / ".draft-v2.md"
+             ).write_text("# v2\n", encoding="utf-8")
+            results, errors = [], []
+
+            def hit(i):
+                try:
+                    if i % 2:
+                        results.append(self._health(url)["generation"])
+                    else:
+                        p = extract_payload(self._root_html(url))
+                        # a served page is internally coherent
+                        results.append(p["generation"])
+                except Exception as e:  # noqa: BLE001
+                    errors.append(e)
+
+            threads = [threading.Thread(target=hit, args=(i,)) for i in range(8)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join()
+            self.assertEqual(errors, [])
+            g2 = self._health(url)["generation"]
+            self.assertNotEqual(g1, g2)
+            self.assertTrue(set(results) <= {g1, g2}, results)
